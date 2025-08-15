@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Database
+*.db
+*.sqlite3
+
+# Environment
+.env
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Logs
+*.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node.js (if any)
+node_modules/
+package-lock.json
+npm-debug.log*
+
+# Temporary files
+*.tmp
+*.temp
+
+# Cleanup: Files to prevent restore
+__init__.py
+run_server.py
+enhanced_requirements.txt
+scripts/
+package-lock.json

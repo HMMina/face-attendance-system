@@ -1,0 +1,55 @@
+"""
+Business logic for device management
+"""
+from sqlalchemy.orm import Session
+from app.models.device import Device
+from app.schemas.device import DeviceCreate, DeviceHeartbeat
+import datetime
+import secrets
+
+def register_device(db: Session, device: DeviceCreate):
+    db_device = Device(
+        device_id=device.device_id,
+        name=device.name,
+        ip_address=device.ip_address,
+        token=secrets.token_hex(16),
+        registered_at=datetime.datetime.utcnow(),
+        last_seen=datetime.datetime.utcnow(),
+        is_active=True,
+        network_status="online"
+    )
+    db.add(db_device)
+    db.commit()
+    db.refresh(db_device)
+    return db_device
+
+def get_devices(db: Session):
+    return db.query(Device).all()
+
+def update_heartbeat(db: Session, data: DeviceHeartbeat):
+    device = db.query(Device).filter(Device.device_id == data.device_id).first()
+    if device:
+        device.last_seen = data.timestamp
+        device.network_status = data.network_status
+        db.commit()
+
+def get_device_by_id(db: Session, device_id: int):
+    return db.query(Device).filter(Device.id == device_id).first()
+
+def update_device(db: Session, device_id: int, device_data: DeviceCreate):
+    db_device = get_device_by_id(db, device_id)
+    if not db_device:
+        return None
+    db_device.name = device_data.name
+    db_device.ip_address = device_data.ip_address
+    db.commit()
+    db.refresh(db_device)
+    return db_device
+
+def delete_device(db: Session, device_id: int):
+    db_device = get_device_by_id(db, device_id)
+    if not db_device:
+        return None
+    db.delete(db_device)
+    db.commit()
+    return db_device
