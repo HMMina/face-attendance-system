@@ -35,7 +35,6 @@ import {
   Assessment as ReportsIcon,
   DevicesOther as DeviceIcon
 } from '@mui/icons-material';
-import { Link } from 'react-router-dom';
 import { getDevices, addDevice, updateDevice, deleteDevice } from '../services/api';
 
 export default function Devices() {

@@ -68,18 +68,25 @@ export default function Attendance() {
 
       if (attendanceResult.success) {
         const rawData = attendanceResult.data || [];
+        const employeeList = employeesResult.success ? (employeesResult.data || []) : [];
         
         // Transform API data to match our display format
-        const transformedData = rawData.map(record => ({
-          id: record.id,
-          employeeName: record.employee_name || 'Unknown',
-          employeeId: record.employee_id,
-          date: record.check_in_time ? record.check_in_time.split('T')[0] : '',
-          checkIn: record.check_in_time ? new Date(record.check_in_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '',
-          checkOut: record.check_out_time ? new Date(record.check_out_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '',
-          status: getAttendanceStatus(record),
-          hoursWorked: calculateHoursWorked(record.check_in_time, record.check_out_time)
-        }));
+        const transformedData = rawData.map(record => {
+          // Find employee name by employee_id
+          const employee = employeeList.find(emp => emp.id === record.employee_id);
+          const employeeName = employee ? employee.name : `Employee #${record.employee_id}`;
+          
+          return {
+            id: record.id,
+            employeeName: employeeName,
+            employeeId: record.employee_id,
+            date: record.check_in_time ? record.check_in_time.split('T')[0] : (record.date || ''),
+            checkIn: record.check_in_time ? new Date(record.check_in_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '',
+            checkOut: record.check_out_time ? new Date(record.check_out_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '',
+            status: getAttendanceStatus(record),
+            hoursWorked: calculateHoursWorked(record.check_in_time, record.check_out_time)
+          };
+        });
 
         setAttendanceData(transformedData);
       } else {
@@ -99,22 +106,40 @@ export default function Attendance() {
   const getAttendanceStatus = (record) => {
     if (!record.check_in_time) return 'absent';
     
-    const checkInTime = new Date(record.check_in_time);
-    const workStartTime = new Date(checkInTime);
-    workStartTime.setHours(8, 0, 0, 0); // Assume work starts at 8:00 AM
-    
-    return checkInTime > workStartTime ? 'late' : 'present';
+    try {
+      const checkInTime = new Date(record.check_in_time);
+      if (isNaN(checkInTime.getTime())) return 'absent';
+      
+      const workStartTime = new Date(checkInTime);
+      workStartTime.setHours(8, 0, 0, 0); // Assume work starts at 8:00 AM
+      
+      return checkInTime > workStartTime ? 'late' : 'present';
+    } catch (error) {
+      console.error('Error getting attendance status:', error);
+      return 'absent';
+    }
   };
 
   const calculateHoursWorked = (checkIn, checkOut) => {
     if (!checkIn || !checkOut) return '0.0';
     
-    const start = new Date(checkIn);
-    const end = new Date(checkOut);
-    const diffMs = end - start;
-    const diffHours = diffMs / (1000 * 60 * 60);
-    
-    return diffHours > 0 ? diffHours.toFixed(1) : '0.0';
+    try {
+      const start = new Date(checkIn);
+      const end = new Date(checkOut);
+      
+      // Check if dates are valid
+      if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+        return '0.0';
+      }
+      
+      const diffMs = end - start;
+      const diffHours = diffMs / (1000 * 60 * 60);
+      
+      return diffHours > 0 ? diffHours.toFixed(1) : '0.0';
+    } catch (error) {
+      console.error('Error calculating hours worked:', error);
+      return '0.0';
+    }
   };
 
   // Sample data for fallback
@@ -147,6 +172,13 @@ export default function Attendance() {
     const interval = setInterval(fetchAttendanceData, 30000);
     return () => clearInterval(interval);
   }, []);
+
+  // Calculate statistics for today
+  const today = new Date().toISOString().split('T')[0];
+  const todayRecords = attendanceData.filter(a => a.date === today);
+  const presentToday = todayRecords.filter(a => a.status === 'present').length;
+  const lateToday = todayRecords.filter(a => a.status === 'late').length;
+  const absentToday = employees.length - todayRecords.length; // Assuming all employees should have records
 
   const handleSearch = () => {
     // Filter logic here
@@ -236,7 +268,7 @@ export default function Attendance() {
                       Hôm nay
                     </Typography>
                     <Typography variant="h6">
-                      {attendanceData.filter(a => a.date === new Date().toISOString().split('T')[0]).length}
+                      {todayRecords.length}
                     </Typography>
                   </Box>
                 </Box>
@@ -254,7 +286,7 @@ export default function Attendance() {
                       Có mặt
                     </Typography>
                     <Typography variant="h6">
-                      {attendanceData.filter(a => a.status === 'present').length}
+                      {presentToday}
                     </Typography>
                   </Box>
                 </Box>
@@ -272,7 +304,7 @@ export default function Attendance() {
                       Muộn
                     </Typography>
                     <Typography variant="h6">
-                      {attendanceData.filter(a => a.status === 'late').length}
+                      {lateToday}
                     </Typography>
                   </Box>
                 </Box>
@@ -290,7 +322,7 @@ export default function Attendance() {
                       Vắng
                     </Typography>
                     <Typography variant="h6">
-                      {attendanceData.filter(a => a.status === 'absent').length}
+                      {absentToday}
                     </Typography>
                   </Box>
                 </Box>
@@ -396,6 +428,12 @@ export default function Attendance() {
               Danh sách chấm công
             </Typography>
           </Box>
+          
+          {error && (
+            <Alert severity="error" sx={{ m: 2 }}>
+              {error}
+            </Alert>
+          )}
           
           {loading ? (
             <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
