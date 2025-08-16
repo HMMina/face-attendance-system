@@ -4,12 +4,18 @@ Business logic for device management
 from sqlalchemy.orm import Session
 from app.models.device import Device
 from app.schemas.device import DeviceCreate, DeviceHeartbeat
+from app.utils.id_generator import generate_device_id, validate_device_id
 import datetime
 import secrets
 
 def register_device(db: Session, device: DeviceCreate):
+    # Auto-generate device_id if not provided or invalid
+    device_id = device.device_id
+    if not device_id or not validate_device_id(device_id):
+        device_id = generate_device_id(db)
+    
     db_device = Device(
-        device_id=device.device_id,
+        device_id=device_id,
         name=device.name,
         ip_address=device.ip_address,
         token=secrets.token_hex(16),

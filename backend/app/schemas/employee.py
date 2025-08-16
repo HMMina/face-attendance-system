@@ -6,7 +6,7 @@ from typing import Optional
 import datetime
 
 class EmployeeBase(BaseModel):
-    employee_id: str
+    employee_id: Optional[str] = None  # Auto-generated if not provided
     name: str
     department: Optional[str] = None
 
@@ -15,6 +15,7 @@ class EmployeeCreate(EmployeeBase):
 
 class EmployeeOut(EmployeeBase):
     id: int
+    employee_id: str  # Always present in output
     created_at: datetime.datetime
 
     model_config = {"from_attributes": True}

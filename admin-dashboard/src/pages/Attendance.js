@@ -93,23 +93,21 @@ export default function Attendance() {
           const employee = employeeList.find(emp => emp.employee_id === group.employee_id);
           const employeeName = employee ? employee.name : `Employee #${group.employee_id}`;
           
-          // Sort records by timestamp to get first (check-in) and last (check-out)
+          // Sort records by timestamp
           const sortedRecords = group.records.sort((a, b) => 
             new Date(a.timestamp) - new Date(b.timestamp)
           );
           
-          const firstRecord = sortedRecords[0];
-          const lastRecord = sortedRecords[sortedRecords.length - 1];
+          // Find CHECK_IN and CHECK_OUT records
+          const checkInRecord = sortedRecords.find(record => record.action_type === 'CHECK_IN');
+          const checkOutRecord = sortedRecords.find(record => record.action_type === 'CHECK_OUT');
           
-          const checkInTime = firstRecord ? new Date(firstRecord.timestamp) : null;
-          // Only set check-out if there are multiple records AND they're different times
-          const checkOutTime = sortedRecords.length > 1 && lastRecord && 
-            firstRecord.timestamp !== lastRecord.timestamp ? 
-            new Date(lastRecord.timestamp) : null;
+          const checkInTime = checkInRecord ? new Date(checkInRecord.timestamp) : null;
+          const checkOutTime = checkOutRecord ? new Date(checkOutRecord.timestamp) : null;
           
           // Calculate working hours
           let hoursWorked = '0.0';
-          if (checkInTime && checkOutTime && checkInTime.getTime() !== checkOutTime.getTime()) {
+          if (checkInTime && checkOutTime) {
             const diffMs = checkOutTime - checkInTime;
             const diffHours = diffMs / (1000 * 60 * 60);
             hoursWorked = diffHours > 0 ? diffHours.toFixed(1) : '0.0';
@@ -224,6 +222,23 @@ export default function Attendance() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+  };
+
+  const handleSearch = () => {
+    // Apply filters by re-fetching data with current filter parameters
+    // The actual filtering is done in the render method
+    // This function serves as a trigger for search action
+    console.log('🔍 Searching with filters:', {
+      searchTerm,
+      selectedEmployee,
+      startDate,
+      endDate
+    });
+    
+    // Optionally refresh data
+    if (searchTerm || selectedEmployee || startDate || endDate) {
+      fetchAttendanceData();
+    }
   };
 
   const getStatusColor = (status) => {
@@ -389,9 +404,11 @@ export default function Attendance() {
                   onChange={(e) => setSelectedEmployee(e.target.value)}
                 >
                   <MenuItem value="">Tất cả</MenuItem>
-                  <MenuItem value="1">Nguyễn Văn A</MenuItem>
-                  <MenuItem value="2">Trần Thị B</MenuItem>
-                  <MenuItem value="3">Lê Văn C</MenuItem>
+                  {employees.map((employee) => (
+                    <MenuItem key={employee.employee_id} value={employee.employee_id}>
+                      {employee.name}
+                    </MenuItem>
+                  ))}
                 </Select>
               </FormControl>
             </Grid>
@@ -467,10 +484,21 @@ export default function Attendance() {
                 </TableHead>
                 <TableBody>
                   {attendanceData
-                    .filter(item => 
-                      searchTerm === '' || 
-                      item.employeeName.toLowerCase().includes(searchTerm.toLowerCase())
-                    )
+                    .filter(item => {
+                      // Search term filter
+                      const matchesSearch = searchTerm === '' || 
+                        item.employeeName.toLowerCase().includes(searchTerm.toLowerCase());
+                      
+                      // Employee filter
+                      const matchesEmployee = selectedEmployee === '' || 
+                        item.employeeId === selectedEmployee;
+                      
+                      // Date range filter
+                      const matchesDateRange = (!startDate || item.date >= startDate) && 
+                        (!endDate || item.date <= endDate);
+                      
+                      return matchesSearch && matchesEmployee && matchesDateRange;
+                    })
                     .slice(0, 15)
                     .map((row, index) => (
                     <TableRow key={row.id}>

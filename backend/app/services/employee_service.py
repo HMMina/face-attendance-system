@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from fastapi import HTTPException
 from app.models.employee import Employee
 from app.schemas.employee import EmployeeCreate
+from app.utils.id_generator import generate_employee_id, validate_employee_id
 import logging
 
 logger = logging.getLogger(__name__)
@@ -17,20 +18,26 @@ class EmployeeService:
     def create_employee(db: Session, employee: EmployeeCreate):
         """Create new employee with validation"""
         try:
+            # Auto-generate employee_id if not provided or invalid
+            employee_id = employee.employee_id
+            if not employee_id or not validate_employee_id(employee_id):
+                employee_id = generate_employee_id(db)
+                logger.info(f"Auto-generated employee_id: {employee_id}")
+            
             # Check if employee_id already exists
-            existing = db.query(Employee).filter(Employee.employee_id == employee.employee_id).first()
+            existing = db.query(Employee).filter(Employee.employee_id == employee_id).first()
             if existing:
-                raise HTTPException(status_code=400, detail="Employee ID already exists")
+                raise HTTPException(status_code=400, detail=f"Employee ID {employee_id} already exists")
                 
             db_employee = Employee(
-                employee_id=employee.employee_id,
+                employee_id=employee_id,
                 name=employee.name,
                 department=employee.department
             )
             db.add(db_employee)
             db.commit()
             db.refresh(db_employee)
-            logger.info(f"Created employee: {employee.employee_id}")
+            logger.info(f"Created employee: {employee_id}")
             return db_employee
         except IntegrityError as e:
             db.rollback()

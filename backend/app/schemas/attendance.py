@@ -2,7 +2,7 @@
 Attendance schemas
 """
 from pydantic import BaseModel
-from typing import Optional
+from typing import Optional, Literal
 import datetime
 
 class AttendanceBase(BaseModel):
@@ -10,6 +10,7 @@ class AttendanceBase(BaseModel):
     device_id: str
     confidence: float
     image_path: Optional[str] = None
+    action_type: Literal["CHECK_IN", "CHECK_OUT"] = "CHECK_IN"
 
 class AttendanceCreate(AttendanceBase):
     pass

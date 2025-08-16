@@ -13,3 +13,4 @@ class Attendance(Base):
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
     confidence = Column(Float)
     image_path = Column(String)
+    action_type = Column(String, default="CHECK_IN", nullable=False)

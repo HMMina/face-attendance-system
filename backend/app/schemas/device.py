@@ -6,7 +6,7 @@ from typing import Optional
 import datetime
 
 class DeviceBase(BaseModel):
-    device_id: str
+    device_id: Optional[str] = None  # Auto-generated if not provided
     name: Optional[str] = None
     ip_address: Optional[str] = None
 
@@ -15,6 +15,7 @@ class DeviceCreate(DeviceBase):
 
 class DeviceOut(DeviceBase):
     id: int
+    device_id: str  # Always present in output
     registered_at: datetime.datetime
     last_seen: datetime.datetime
     is_active: bool
