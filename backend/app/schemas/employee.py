@@ -1,7 +1,7 @@
 """
 Employee schemas
 """
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import Optional
 import datetime
 
@@ -9,6 +9,9 @@ class EmployeeBase(BaseModel):
     employee_id: Optional[str] = None  # Auto-generated if not provided
     name: str
     department: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    position: Optional[str] = None
 
 class EmployeeCreate(EmployeeBase):
     pass

@@ -26,24 +26,31 @@ def generate_employee_id(db: Session) -> str:
     return f"EMP{max_num + 1:03d}"
 
 def generate_device_id(db: Session) -> str:
-    """Generate next device ID in format DEV001, DEV002, etc."""
+    """Generate next device ID in format KIOSK001, KIOSK002, etc."""
     # Find highest existing device_id
     devices = db.query(Device).all()
     
     if not devices:
-        return "DEV001"
+        return "KIOSK001"
     
-    # Extract numbers from existing IDs
+    # Extract numbers from existing IDs (support both KIOSK and DEV for backward compatibility)
     max_num = 0
     for dev in devices:
-        if dev.device_id and dev.device_id.startswith("DEV"):
-            try:
-                num = int(dev.device_id[3:])  # Remove "DEV" prefix
-                max_num = max(max_num, num)
-            except ValueError:
-                continue
+        if dev.device_id:
+            if dev.device_id.startswith("KIOSK"):
+                try:
+                    num = int(dev.device_id[5:])  # Remove "KIOSK" prefix
+                    max_num = max(max_num, num)
+                except ValueError:
+                    continue
+            elif dev.device_id.startswith("DEV"):
+                try:
+                    num = int(dev.device_id[3:])  # Remove "DEV" prefix  
+                    max_num = max(max_num, num)
+                except ValueError:
+                    continue
     
-    return f"DEV{max_num + 1:03d}"
+    return f"KIOSK{max_num + 1:03d}"
 
 def validate_employee_id(employee_id: str) -> bool:
     """Validate employee ID format (EMP followed by 3 digits)"""
@@ -60,15 +67,26 @@ def validate_employee_id(employee_id: str) -> bool:
         return False
 
 def validate_device_id(device_id: str) -> bool:
-    """Validate device ID format (DEV followed by 3 digits)"""
+    """Validate device ID format (KIOSK followed by 3 digits, or DEV for backward compatibility)"""
     if not device_id:
         return False
-    if not device_id.startswith("DEV"):
-        return False
-    if len(device_id) != 6:
-        return False
-    try:
-        int(device_id[3:])
-        return True
-    except ValueError:
+    
+    # Support both KIOSK001 and DEV001 formats
+    if device_id.startswith("KIOSK"):
+        if len(device_id) != 8:  # KIOSK + 3 digits = 8 chars
+            return False
+        try:
+            int(device_id[5:])  # Extract number part after "KIOSK"
+            return True
+        except ValueError:
+            return False
+    elif device_id.startswith("DEV"):
+        if len(device_id) != 6:  # DEV + 3 digits = 6 chars
+            return False
+        try:
+            int(device_id[3:])  # Extract number part after "DEV"
+            return True
+        except ValueError:
+            return False
+    else:
         return False

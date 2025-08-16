@@ -11,4 +11,7 @@ class Employee(Base):
     employee_id = Column(String, unique=True, index=True)
     name = Column(String)
     department = Column(String)
+    email = Column(String)
+    phone = Column(String)
+    position = Column(String)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)

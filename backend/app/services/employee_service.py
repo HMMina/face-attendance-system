@@ -32,7 +32,10 @@ class EmployeeService:
             db_employee = Employee(
                 employee_id=employee_id,
                 name=employee.name,
-                department=employee.department
+                department=employee.department,
+                email=employee.email,
+                phone=employee.phone,
+                position=employee.position
             )
             db.add(db_employee)
             db.commit()
@@ -52,9 +55,9 @@ class EmployeeService:
 
     @staticmethod
     def get_employees(db: Session):
-        """Get all employees with error handling"""
+        """Get all employees ordered by employee_id"""
         try:
-            return db.query(Employee).order_by(Employee.created_at.desc()).all()
+            return db.query(Employee).order_by(Employee.employee_id.asc()).all()
         except Exception as e:
             logger.error(f"Error fetching employees: {e}")
             raise HTTPException(status_code=500, detail="Error fetching employees")
@@ -78,6 +81,9 @@ class EmployeeService:
                 
             db_employee.name = employee.name
             db_employee.department = employee.department
+            db_employee.email = employee.email
+            db_employee.phone = employee.phone
+            db_employee.position = employee.position
             db.commit()
             db.refresh(db_employee)
             logger.info(f"Updated employee: {employee_id}")
