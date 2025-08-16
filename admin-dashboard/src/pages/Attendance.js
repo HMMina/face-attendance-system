@@ -70,21 +70,64 @@ export default function Attendance() {
         const rawData = attendanceResult.data || [];
         const employeeList = employeesResult.success ? (employeesResult.data || []) : [];
         
-        // Transform API data to match our display format
-        const transformedData = rawData.map(record => {
-          // Find employee name by employee_id
-          const employee = employeeList.find(emp => emp.id === record.employee_id);
-          const employeeName = employee ? employee.name : `Employee #${record.employee_id}`;
+        // Group attendance records by employee and date
+        const groupedData = {};
+        rawData.forEach(record => {
+          const date = record.timestamp ? record.timestamp.split('T')[0] : '';
+          const key = `${record.employee_id}_${date}`;
+          
+          if (!groupedData[key]) {
+            groupedData[key] = {
+              employee_id: record.employee_id,
+              date: date,
+              records: []
+            };
+          }
+          groupedData[key].records.push(record);
+        });
+        
+        // Transform grouped data to attendance entries
+        const transformedData = Object.values(groupedData).map((group, index) => {
+          // Find employee name by employee_id (string matching)
+          const employee = employeeList.find(emp => emp.employee_id === group.employee_id);
+          const employeeName = employee ? employee.name : `Employee #${group.employee_id}`;
+          
+          // Sort records by timestamp to get first (check-in) and last (check-out)
+          const sortedRecords = group.records.sort((a, b) => 
+            new Date(a.timestamp) - new Date(b.timestamp)
+          );
+          
+          const firstRecord = sortedRecords[0];
+          const lastRecord = sortedRecords[sortedRecords.length - 1];
+          
+          const checkInTime = firstRecord ? new Date(firstRecord.timestamp) : null;
+          const checkOutTime = sortedRecords.length > 1 && lastRecord ? new Date(lastRecord.timestamp) : null;
+          
+          // Calculate working hours
+          let hoursWorked = '0.0';
+          if (checkInTime && checkOutTime && checkInTime.getTime() !== checkOutTime.getTime()) {
+            const diffMs = checkOutTime - checkInTime;
+            const diffHours = diffMs / (1000 * 60 * 60);
+            hoursWorked = diffHours > 0 ? diffHours.toFixed(1) : '0.0';
+          }
+          
+          // Determine status based on check-in time (assuming work starts at 8:00 AM)
+          let status = 'present';
+          if (checkInTime) {
+            const workStartTime = new Date(checkInTime);
+            workStartTime.setHours(8, 0, 0, 0);
+            status = checkInTime > workStartTime ? 'late' : 'present';
+          }
           
           return {
-            id: record.id,
+            id: index + 1,
             employeeName: employeeName,
-            employeeId: record.employee_id,
-            date: record.check_in_time ? record.check_in_time.split('T')[0] : (record.date || ''),
-            checkIn: record.check_in_time ? new Date(record.check_in_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '',
-            checkOut: record.check_out_time ? new Date(record.check_out_time).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '',
-            status: getAttendanceStatus(record),
-            hoursWorked: calculateHoursWorked(record.check_in_time, record.check_out_time)
+            employeeId: group.employee_id,
+            date: group.date,
+            checkIn: checkInTime ? checkInTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '',
+            checkOut: checkOutTime ? checkOutTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '',
+            status: status,
+            hoursWorked: hoursWorked
           };
         });
 
@@ -93,11 +136,9 @@ export default function Attendance() {
         throw new Error(attendanceResult.error || 'Failed to fetch attendance data');
       }
     } catch (err) {
-      console.error('Error fetching attendance data:', err);
-      setError(err.message || 'Không thể tải dữ liệu chấm công');
-      
-      // Fallback to sample data
-      setAttendanceData(generateSampleData());
+      console.error('❌ Error fetching attendance data:', err);
+      setError(err.message || 'Không thể tải dữ liệu chấm công từ database');
+      setAttendanceData([]); // Don't fallback to sample data
     } finally {
       setLoading(false);
     }
@@ -142,29 +183,6 @@ export default function Attendance() {
     }
   };
 
-  // Sample data for fallback
-  const generateSampleData = () => {
-    const sampleData = [];
-    const employees = ['Nguyễn Văn A', 'Trần Thị B', 'Lê Văn C', 'Phạm Thị D'];
-    const statuses = ['present', 'late', 'absent'];
-    
-    for (let i = 0; i < 20; i++) {
-      const date = new Date();
-      date.setDate(date.getDate() - i);
-      
-      sampleData.push({
-        id: i + 1,
-        employeeName: employees[Math.floor(Math.random() * employees.length)],
-        date: date.toISOString().split('T')[0],
-        checkIn: `0${7 + Math.floor(Math.random() * 3)}:${Math.floor(Math.random() * 60).toString().padStart(2, '0')}`,
-        checkOut: `1${7 + Math.floor(Math.random() * 3)}:${Math.floor(Math.random() * 60).toString().padStart(2, '0')}`,
-        status: statuses[Math.floor(Math.random() * statuses.length)],
-        hoursWorked: (8 + Math.random() * 2).toFixed(1)
-      });
-    }
-    return sampleData;
-  };
-
   useEffect(() => {
     fetchAttendanceData();
     
@@ -178,16 +196,8 @@ export default function Attendance() {
   const todayRecords = attendanceData.filter(a => a.date === today);
   const presentToday = todayRecords.filter(a => a.status === 'present').length;
   const lateToday = todayRecords.filter(a => a.status === 'late').length;
-  const absentToday = employees.length - todayRecords.length; // Assuming all employees should have records
-
-  const handleSearch = () => {
-    // Filter logic here
-    setLoading(true);
-    setTimeout(() => {
-      setAttendanceData(generateSampleData());
-      setLoading(false);
-    }, 500);
-  };
+  const totalEmployees = employees.length;
+  const absentToday = totalEmployees > 0 ? Math.max(0, totalEmployees - todayRecords.length) : 0;
 
   const exportToCSV = () => {
     const headers = ['Tên nhân viên', 'Ngày', 'Giờ vào', 'Giờ ra', 'Trạng thái', 'Giờ làm việc'];

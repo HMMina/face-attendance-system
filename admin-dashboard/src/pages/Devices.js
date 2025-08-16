@@ -23,7 +23,9 @@ import {
   IconButton,
   Grid,
   Card,
-  CardContent
+  CardContent,
+  Alert,
+  CircularProgress
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -48,33 +50,29 @@ export default function Devices() {
   const [formData, setFormData] = useState({
     device_id: '',
     name: '',
-    location: '',
     ip_address: '',
-    description: ''
+    is_active: true
   });
 
   const fetchDevices = async () => {
     try {
       setLoading(true);
       setError('');
+      setSuccess('');
+      
       const result = await getDevices();
       
       if (result.success) {
-        setDevices(result.data || []);
+        const devicesData = result.data || [];
+        console.log('✅ Devices loaded from database:', devicesData);
+        setDevices(devicesData);
       } else {
-        throw new Error(result.error || 'Failed to fetch devices');
+        throw new Error(result.error || 'Failed to fetch devices from database');
       }
     } catch (err) {
-      console.error('Error fetching devices:', err);
-      setError(err.message || 'Không thể tải danh sách thiết bị');
-      
-      // Fallback to sample data
-      setDevices([
-        { id: 1, name: 'KIOSK001', device_id: 'KIOSK001', location: 'Tầng 1 - Lễ tân', ip_address: '192.168.1.101', is_active: true, last_ping: new Date().toISOString() },
-        { id: 2, name: 'KIOSK002', device_id: 'KIOSK002', location: 'Tầng 2 - Phòng IT', ip_address: '192.168.1.102', is_active: true, last_ping: new Date().toISOString() },
-        { id: 3, name: 'KIOSK003', device_id: 'KIOSK003', location: 'Tầng 3 - Phòng HR', ip_address: '192.168.1.103', is_active: false, last_ping: new Date(Date.now() - 300000).toISOString() },
-        { id: 4, name: 'KIOSK004', device_id: 'KIOSK004', location: 'Tầng 4 - Phòng Marketing', ip_address: '192.168.1.104', is_active: true, last_ping: new Date().toISOString() }
-      ]);
+      console.error('❌ Error fetching devices from database:', err);
+      setError(err.message || 'Không thể tải danh sách thiết bị từ database');
+      setDevices([]); // Don't fallback to sample data - show empty list
     } finally {
       setLoading(false);
     }
@@ -87,39 +85,6 @@ export default function Devices() {
     const interval = setInterval(fetchDevices, 60000);
     return () => clearInterval(interval);
   }, []);
-  const generateSampleDevices = () => {
-    return [
-      {
-        id: 1,
-        device_id: 'KIOSK001',
-        name: 'Kiosk cổng chính',
-        location: 'Tầng 1 - Cổng chính',
-        network_status: 'online',
-        last_seen: '2025-08-16 08:30:00'
-      },
-      {
-        id: 2,
-        device_id: 'KIOSK002',
-        name: 'Kiosk văn phòng',
-        location: 'Tầng 2 - Văn phòng',
-        network_status: 'online',
-        last_seen: '2025-08-16 08:25:00'
-      },
-      {
-        id: 3,
-        device_id: 'KIOSK003',
-        name: 'Kiosk canteen',
-        location: 'Tầng 1 - Căng tin',
-        network_status: 'offline',
-        last_seen: '2025-08-16 07:45:00'
-      }
-    ];
-  };
-
-  useEffect(() => {
-    // Load sample devices
-    setDevices(generateSampleDevices());
-  }, []);
 
   const handleOpenDialog = (device = null) => {
     if (device) {
@@ -127,16 +92,16 @@ export default function Devices() {
       setFormData({
         device_id: device.device_id,
         name: device.name,
-        location: device.location,
-        network_status: device.network_status
+        ip_address: device.ip_address || '',
+        is_active: device.is_active
       });
     } else {
       setEditingDevice(null);
       setFormData({
         device_id: '',
         name: '',
-        location: '',
-        network_status: 'online'
+        ip_address: '',
+        is_active: true
       });
     }
     setOpen(true);
@@ -147,38 +112,66 @@ export default function Devices() {
     setEditingDevice(null);
   };
 
-  const handleSave = () => {
-    if (editingDevice) {
-      // Update existing device
-      setDevices(devices.map(d => 
-        d.id === editingDevice.id 
-          ? { ...d, ...formData, last_seen: new Date().toISOString().replace('T', ' ').substr(0, 19) }
-          : d
-      ));
-    } else {
-      // Add new device
-      const newDevice = {
-        id: Math.max(...devices.map(d => d.id), 0) + 1,
-        ...formData,
-        last_seen: new Date().toISOString().replace('T', ' ').substr(0, 19)
-      };
-      setDevices([...devices, newDevice]);
+  const handleSave = async () => {
+    try {
+      setSaving(true);
+      setError('');
+      setSuccess('');
+
+      if (editingDevice) {
+        // Update existing device
+        const result = await updateDevice(editingDevice.id, formData);
+        if (result.success) {
+          setSuccess('Cập nhật thiết bị thành công!');
+          await fetchDevices(); // Refresh list from database
+        } else {
+          throw new Error(result.error || 'Failed to update device');
+        }
+      } else {
+        // Add new device
+        const result = await addDevice(formData);
+        if (result.success) {
+          setSuccess('Thêm thiết bị thành công!');
+          await fetchDevices(); // Refresh list from database
+        } else {
+          throw new Error(result.error || 'Failed to add device');
+        }
+      }
+      
+      handleCloseDialog();
+      
+      // Clear success message after 3 seconds
+      setTimeout(() => setSuccess(''), 3000);
+      
+    } catch (err) {
+      console.error('Error saving device:', err);
+      setError(err.message || 'Có lỗi khi lưu thiết bị');
+    } finally {
+      setSaving(false);
     }
-    handleCloseDialog();
   };
 
-  const handleDelete = (deviceId) => {
+  const handleDelete = async (deviceId) => {
     if (window.confirm('Bạn có chắc chắn muốn xóa thiết bị này?')) {
-      setDevices(devices.filter(d => d.id !== deviceId));
+      try {
+        setError('');
+        setSuccess('');
+        
+        const result = await deleteDevice(deviceId);
+        if (result.success) {
+          setSuccess('Xóa thiết bị thành công!');
+          await fetchDevices(); // Refresh list from database
+          
+          // Clear success message after 3 seconds
+          setTimeout(() => setSuccess(''), 3000);
+        } else {
+          throw new Error(result.error || 'Failed to delete device');
+        }
+      } catch (err) {
+        console.error('Error deleting device:', err);
+        setError(err.message || 'Có lỗi khi xóa thiết bị');
+      }
     }
-  };
-
-  const getStatusColor = (status) => {
-    return status === 'online' ? 'success' : 'error';
-  };
-
-  const getStatusText = (status) => {
-    return status === 'online' ? 'Trực tuyến' : 'Ngoại tuyến';
   };
 
   return (
@@ -205,7 +198,28 @@ export default function Devices() {
       </AppBar>
 
       <Container maxWidth="lg">
+        {/* Error/Success Messages */}
+        {error && (
+          <Alert severity="error" sx={{ mb: 2 }}>
+            {error}
+          </Alert>
+        )}
+        
+        {success && (
+          <Alert severity="success" sx={{ mb: 2 }}>
+            {success}
+          </Alert>
+        )}
+        
+        {/* Loading State */}
+        {loading && (
+          <Box sx={{ display: 'flex', justifyContent: 'center', mb: 3 }}>
+            <CircularProgress />
+          </Box>
+        )}
+
         {/* Statistics */}
+        {!loading && (
         <Grid container spacing={3} sx={{ mb: 3 }}>
           <Grid item xs={12} sm={6} md={3}>
             <Card>
@@ -261,8 +275,10 @@ export default function Devices() {
             </Card>
           </Grid>
         </Grid>
+        )}
 
         {/* Device Table */}
+        {!loading && (
         <Paper>
           <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <Typography variant="h6">
@@ -284,7 +300,7 @@ export default function Devices() {
                   <TableCell>STT</TableCell>
                   <TableCell>Mã thiết bị</TableCell>
                   <TableCell>Tên thiết bị</TableCell>
-                  <TableCell>Vị trí</TableCell>
+                  <TableCell>Địa chỉ IP</TableCell>
                   <TableCell>Trạng thái</TableCell>
                   <TableCell>Lần cuối kết nối</TableCell>
                   <TableCell>Hành động</TableCell>
@@ -296,15 +312,17 @@ export default function Devices() {
                     <TableCell>{index + 1}</TableCell>
                     <TableCell>{device.device_id}</TableCell>
                     <TableCell>{device.name}</TableCell>
-                    <TableCell>{device.location}</TableCell>
+                    <TableCell>{device.ip_address || 'Chưa cấu hình'}</TableCell>
                     <TableCell>
                       <Chip
-                        label={getStatusText(device.network_status)}
-                        color={getStatusColor(device.network_status)}
+                        label={device.is_active ? 'Hoạt động' : 'Không hoạt động'}
+                        color={device.is_active ? 'success' : 'error'}
                         size="small"
                       />
                     </TableCell>
-                    <TableCell>{device.last_seen}</TableCell>
+                    <TableCell>
+                      {device.last_seen ? new Date(device.last_seen).toLocaleString('vi-VN') : 'Chưa kết nối'}
+                    </TableCell>
                     <TableCell>
                       <IconButton
                         size="small"
@@ -327,6 +345,7 @@ export default function Devices() {
             </Table>
           </TableContainer>
         </Paper>
+        )}
 
         {/* Add/Edit Dialog */}
         <Dialog open={open} onClose={handleCloseDialog} maxWidth="sm" fullWidth>
@@ -355,33 +374,37 @@ export default function Devices() {
             />
             <TextField
               margin="dense"
-              label="Vị trí"
+              label="Địa chỉ IP"
               fullWidth
               variant="outlined"
-              value={formData.location}
-              onChange={(e) => setFormData({...formData, location: e.target.value})}
+              value={formData.ip_address}
+              onChange={(e) => setFormData({...formData, ip_address: e.target.value})}
               sx={{ mb: 2 }}
             />
             <TextField
               margin="dense"
-              label="Trạng thái mạng"
+              label="Trạng thái hoạt động"
               fullWidth
               variant="outlined"
               select
-              value={formData.network_status}
-              onChange={(e) => setFormData({...formData, network_status: e.target.value})}
+              value={formData.is_active}
+              onChange={(e) => setFormData({...formData, is_active: e.target.value === 'true'})}
               SelectProps={{
                 native: true,
               }}
             >
-              <option value="online">Trực tuyến</option>
-              <option value="offline">Ngoại tuyến</option>
+              <option value={true}>Hoạt động</option>
+              <option value={false}>Không hoạt động</option>
             </TextField>
           </DialogContent>
           <DialogActions>
-            <Button onClick={handleCloseDialog}>Hủy</Button>
-            <Button onClick={handleSave} variant="contained">
-              {editingDevice ? 'Cập nhật' : 'Thêm'}
+            <Button onClick={handleCloseDialog} disabled={saving}>Hủy</Button>
+            <Button 
+              onClick={handleSave} 
+              variant="contained"
+              disabled={saving}
+            >
+              {saving ? 'Đang lưu...' : (editingDevice ? 'Cập nhật' : 'Thêm')}
             </Button>
           </DialogActions>
         </Dialog>

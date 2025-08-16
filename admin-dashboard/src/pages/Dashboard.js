@@ -70,43 +70,53 @@ export default function Dashboard() {
       // Calculate today's attendance
       const today = new Date().toISOString().split('T')[0];
       const todayAttendance = attendance.filter(record => 
-        record.check_in_time && record.check_in_time.startsWith(today)
+        record.timestamp && record.timestamp.startsWith(today)
       );
 
-      const presentEmployees = new Set(todayAttendance.map(record => record.employee_id));
-      const lateEmployees = todayAttendance.filter(record => {
-        // Assume work starts at 8:00 AM
-        const checkInTime = new Date(record.check_in_time);
+      // Group by employee_id to get unique employees present today
+      const presentEmployeeIds = new Set(todayAttendance.map(record => record.employee_id));
+      
+      // Calculate late employees (first check-in after 8:00 AM)
+      const employeeFirstCheckin = {};
+      todayAttendance.forEach(record => {
+        const empId = record.employee_id;
+        if (!employeeFirstCheckin[empId] || new Date(record.timestamp) < new Date(employeeFirstCheckin[empId])) {
+          employeeFirstCheckin[empId] = record.timestamp;
+        }
+      });
+      
+      const lateEmployees = Object.entries(employeeFirstCheckin).filter(([empId, timestamp]) => {
+        const checkInTime = new Date(timestamp);
         const workStartTime = new Date(checkInTime);
         workStartTime.setHours(8, 0, 0, 0);
         return checkInTime > workStartTime;
       });
 
-      const onlineDevices = devices.filter(device => device.status === 'online' || device.is_active).length;
+      const onlineDevices = devices.filter(device => device.network_status === 'online' || device.is_active).length;
 
       setStats({
         totalEmployees: employees.length,
-        presentToday: presentEmployees.size,
-        onTimeToday: presentEmployees.size - lateEmployees.length,
+        presentToday: presentEmployeeIds.size,
+        onTimeToday: presentEmployeeIds.size - lateEmployees.length,
         lateToday: lateEmployees.length,
-        absentToday: employees.length - presentEmployees.size,
+        absentToday: employees.length - presentEmployeeIds.size,
         onlineDevices: onlineDevices,
         totalDevices: devices.length
       });
 
     } catch (err) {
-      console.error('Dashboard data fetch error:', err);
-      setError(err.message || 'Không thể tải dữ liệu dashboard');
+      console.error('❌ Dashboard data fetch error:', err);
+      setError(err.message || 'Không thể tải dữ liệu dashboard từ database');
       
-      // Fallback to sample data if API fails
+      // Reset stats to zero instead of fallback data
       setStats({
-        totalEmployees: 45,
-        presentToday: 38,
-        onTimeToday: 33,
-        lateToday: 5,
-        absentToday: 7,
-        onlineDevices: 3,
-        totalDevices: 4
+        totalEmployees: 0,
+        presentToday: 0,
+        onTimeToday: 0,
+        lateToday: 0,
+        absentToday: 0,
+        onlineDevices: 0,
+        totalDevices: 0
       });
     } finally {
       setLoading(false);

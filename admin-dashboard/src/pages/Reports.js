@@ -60,13 +60,26 @@ export default function Reports() {
         // Process data to create report
         const processedData = employees.map(employee => {
           const employeeAttendance = attendance.filter(record => 
-            record.employee_id === employee.id
+            record.employee_id === employee.employee_id // Fix: use employee_id string matching
           );
           
-          const daysPresent = employeeAttendance.length;
-          const daysLate = employeeAttendance.filter(record => {
-            if (!record.check_in_time) return false;
-            const checkInTime = new Date(record.check_in_time);
+          // Group by date to count unique days
+          const uniqueDays = new Set(
+            employeeAttendance.map(record => record.timestamp.split('T')[0])
+          );
+          const daysPresent = uniqueDays.size;
+          
+          // Calculate late days (days with first check-in after 8:00 AM)
+          const dailyFirstCheckin = {};
+          employeeAttendance.forEach(record => {
+            const date = record.timestamp.split('T')[0];
+            if (!dailyFirstCheckin[date] || new Date(record.timestamp) < new Date(dailyFirstCheckin[date])) {
+              dailyFirstCheckin[date] = record.timestamp;
+            }
+          });
+          
+          const daysLate = Object.values(dailyFirstCheckin).filter(timestamp => {
+            const checkInTime = new Date(timestamp);
             const workStartTime = new Date(checkInTime);
             workStartTime.setHours(8, 0, 0, 0);
             return checkInTime > workStartTime;
@@ -91,24 +104,12 @@ export default function Reports() {
         throw new Error('Failed to fetch report data');
       }
     } catch (err) {
-      console.error('Error fetching report data:', err);
-      setError(err.message || 'Không thể tải dữ liệu báo cáo');
-      
-      // Fallback to sample data
-      setReportData(generateSampleReportData());
+      console.error('❌ Error fetching report data:', err);
+      setError(err.message || 'Không thể tải dữ liệu báo cáo từ database');
+      setReportData([]); // Don't fallback to sample data
     } finally {
       setLoading(false);
     }
-  };
-
-  const generateSampleReportData = () => {
-    return [
-      { id: 1, employee: 'Nguyễn Văn A', department: 'IT', daysPresent: 22, daysLate: 1, daysAbsent: 0, attendanceRate: 95.7 },
-      { id: 2, employee: 'Trần Thị B', department: 'HR', daysPresent: 21, daysLate: 2, daysAbsent: 0, attendanceRate: 91.3 },
-      { id: 3, employee: 'Lê Văn C', department: 'Finance', daysPresent: 20, daysLate: 1, daysAbsent: 2, attendanceRate: 87.0 },
-      { id: 4, employee: 'Phạm Thị D', department: 'Marketing', daysPresent: 22, daysLate: 0, daysAbsent: 1, attendanceRate: 95.7 },
-      { id: 5, employee: 'Hoàng Văn E', department: 'IT', daysPresent: 23, daysLate: 0, daysAbsent: 0, attendanceRate: 100.0 }
-    ];
   };
 
   useEffect(() => {
