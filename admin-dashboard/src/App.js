@@ -1,12 +1,10 @@
-// App entry point cho Admin Dashboard
+// App entry point cho Admin Dashboard - 4 chức năng cốt lõi
 import React from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import Dashboard from './pages/Dashboard';
-import Login from './pages/Login';
 import Employees from './pages/Employees';
 import Devices from './pages/Devices';
 import Attendance from './pages/Attendance';
-import Network from './pages/Network';
 import Reports from './pages/Reports';
 
 function App() {
@@ -14,11 +12,10 @@ function App() {
     <BrowserRouter>
       <Routes>
         <Route path="/" element={<Dashboard />} />
-        <Route path="/login" element={<Login />} />
+        <Route path="/dashboard" element={<Dashboard />} />
         <Route path="/employees" element={<Employees />} />
         <Route path="/devices" element={<Devices />} />
         <Route path="/attendance" element={<Attendance />} />
-        <Route path="/network" element={<Network />} />
         <Route path="/reports" element={<Reports />} />
       </Routes>
     </BrowserRouter>
