@@ -64,7 +64,6 @@ export default function Devices() {
       
       if (result.success) {
         const devicesData = result.data || [];
-        console.log('✅ Devices loaded from database:', devicesData);
         setDevices(devicesData);
       } else {
         throw new Error(result.error || 'Failed to fetch devices from database');

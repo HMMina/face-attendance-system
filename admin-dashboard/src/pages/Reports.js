@@ -89,7 +89,7 @@ export default function Reports() {
           const attendanceRate = totalWorkingDays > 0 ? (daysPresent / totalWorkingDays * 100) : 0;
           
           return {
-            id: employee.id,
+            id: employee.employee_id, // Use employee_id for consistency
             employee: employee.name,
             department: employee.department,
             daysPresent,

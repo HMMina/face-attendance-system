@@ -40,6 +40,7 @@ import {
 } from '@mui/icons-material';
 import { Link } from 'react-router-dom';
 import { getAllAttendance, getEmployees } from '../services/api';
+import { getCurrentDateString, formatDateFromTimestamp, formatTimeFromTimestamp, isLateCheckIn } from '../utils/dateUtils';
 
 export default function Attendance() {
   const [attendanceData, setAttendanceData] = useState([]);
@@ -101,7 +102,10 @@ export default function Attendance() {
           const lastRecord = sortedRecords[sortedRecords.length - 1];
           
           const checkInTime = firstRecord ? new Date(firstRecord.timestamp) : null;
-          const checkOutTime = sortedRecords.length > 1 && lastRecord ? new Date(lastRecord.timestamp) : null;
+          // Only set check-out if there are multiple records AND they're different times
+          const checkOutTime = sortedRecords.length > 1 && lastRecord && 
+            firstRecord.timestamp !== lastRecord.timestamp ? 
+            new Date(lastRecord.timestamp) : null;
           
           // Calculate working hours
           let hoursWorked = '0.0';
@@ -111,12 +115,10 @@ export default function Attendance() {
             hoursWorked = diffHours > 0 ? diffHours.toFixed(1) : '0.0';
           }
           
-          // Determine status based on check-in time (assuming work starts at 8:00 AM)
+          // Determine status based on check-in time
           let status = 'present';
           if (checkInTime) {
-            const workStartTime = new Date(checkInTime);
-            workStartTime.setHours(8, 0, 0, 0);
-            status = checkInTime > workStartTime ? 'late' : 'present';
+            status = isLateCheckIn(firstRecord.timestamp) ? 'late' : 'present';
           }
           
           return {
@@ -124,8 +126,8 @@ export default function Attendance() {
             employeeName: employeeName,
             employeeId: group.employee_id,
             date: group.date,
-            checkIn: checkInTime ? checkInTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '',
-            checkOut: checkOutTime ? checkOutTime.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }) : '',
+            checkIn: checkInTime ? formatTimeFromTimestamp(firstRecord.timestamp) : '',
+            checkOut: checkOutTime ? formatTimeFromTimestamp(lastRecord.timestamp) : '',
             status: status,
             hoursWorked: hoursWorked
           };
@@ -192,7 +194,7 @@ export default function Attendance() {
   }, []);
 
   // Calculate statistics for today
-  const today = new Date().toISOString().split('T')[0];
+  const today = getCurrentDateString();
   const todayRecords = attendanceData.filter(a => a.date === today);
   const presentToday = todayRecords.filter(a => a.status === 'present').length;
   const lateToday = todayRecords.filter(a => a.status === 'late').length;

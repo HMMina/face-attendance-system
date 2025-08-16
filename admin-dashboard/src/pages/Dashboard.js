@@ -26,6 +26,7 @@ import {
   CheckCircle as CheckCircleIcon
 } from '@mui/icons-material';
 import { getEmployees, getDevices, getAllAttendance } from '../services/api';
+import { getCurrentDateString, isLateCheckIn } from '../utils/dateUtils';
 
 export default function Dashboard() {
   const [stats, setStats] = useState({
@@ -68,7 +69,7 @@ export default function Dashboard() {
       const attendance = attendanceResult.data || [];
 
       // Calculate today's attendance
-      const today = new Date().toISOString().split('T')[0];
+      const today = getCurrentDateString();
       const todayAttendance = attendance.filter(record => 
         record.timestamp && record.timestamp.startsWith(today)
       );
@@ -86,10 +87,7 @@ export default function Dashboard() {
       });
       
       const lateEmployees = Object.entries(employeeFirstCheckin).filter(([empId, timestamp]) => {
-        const checkInTime = new Date(timestamp);
-        const workStartTime = new Date(checkInTime);
-        workStartTime.setHours(8, 0, 0, 0);
-        return checkInTime > workStartTime;
+        return isLateCheckIn(timestamp);
       });
 
       const onlineDevices = devices.filter(device => device.network_status === 'online' || device.is_active).length;
