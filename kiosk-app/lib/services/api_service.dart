@@ -51,17 +51,19 @@ class ApiService {
         final data = json.decode(responseData);
         return {
           'success': true,
-          'employee_id': data['employee_id'],
-          'employee_name': data['employee_name'],
-          'confidence': data['confidence'],
-          'timestamp': data['timestamp'],
+          'employee_id': data['employee_id'] ?? 'N/A',
+          'employee_name': data['employee_name'] ?? 'Nhân viên',
+          'confidence': data['confidence'] ?? 0.0,
+          'timestamp': data['timestamp'] ?? DateTime.now().toIso8601String(),
+          'action_type': data['action_type'] ?? 'checkin',
+          'device_id': data['device_id'] ?? deviceId,
         };
       } else {
         final errorData = json.decode(responseData);
         return {
           'success': false,
           'error': 'Server error',
-          'message': errorData['detail'] ?? 'Unknown error',
+          'message': errorData['detail'] ?? 'Unknown server error',
           'status_code': response.statusCode,
         };
       }

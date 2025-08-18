@@ -32,7 +32,7 @@ dependencies:
   # Device & System
   device_info_plus: ^10.1.0
   permission_handler: ^11.1.0
-  wakelock: ^0.6.2
+  wakelock_plus: ^1.1.4
   
   # State Management
   provider: ^6.1.1
@@ -62,12 +62,3 @@ flutter:
     - assets/images/
     - assets/icons/
     - assets/sounds/
-  
-  fonts:
-    - family: Roboto
-      fonts:
-        - asset: assets/fonts/Roboto-Regular.ttf
-        - asset: assets/fonts/Roboto-Bold.ttf
-          weight: 700
-  assets:
-    - assets/

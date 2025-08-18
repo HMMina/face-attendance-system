@@ -1,14 +1,19 @@
 /// Entry point cho Kiosk App
 /// Chế độ kiosk, auto-discovery server, chụp ảnh, gửi ảnh lên server
 import 'package:flutter/material.dart';
-import 'config/device_config.dart';
-import 'services/discovery_service.dart';
-import 'services/camera_service.dart';
-import 'services/api_service.dart';
-import 'screens/kiosk_screen.dart';
+import 'package:flutter/services.dart';
+import 'screens/optimized_landscape_kiosk_screen.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Set system UI for kiosk mode
+  SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  SystemChrome.setPreferredOrientations([
+    DeviceOrientation.landscapeLeft,
+    DeviceOrientation.landscapeRight,
+  ]);
+  
   runApp(const KioskApp());
 }
 
@@ -22,8 +27,10 @@ class KioskApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
         brightness: Brightness.dark,
+        fontFamily: 'Roboto',
+        useMaterial3: true,
       ),
-      home: const KioskScreen(),
+      home: const OptimizedLandscapeKioskScreen(),
       debugShowCheckedModeBanner: false,
     );
   }
