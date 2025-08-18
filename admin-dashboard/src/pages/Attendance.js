@@ -116,7 +116,7 @@ export default function Attendance() {
           // Determine status based on check-in time
           let status = 'present';
           if (checkInTime) {
-            status = isLateCheckIn(firstRecord.timestamp) ? 'late' : 'present';
+            status = isLateCheckIn(checkInRecord.timestamp) ? 'late' : 'present';
           }
           
           return {
@@ -124,8 +124,8 @@ export default function Attendance() {
             employeeName: employeeName,
             employeeId: group.employee_id,
             date: group.date,
-            checkIn: checkInTime ? formatTimeFromTimestamp(firstRecord.timestamp) : '',
-            checkOut: checkOutTime ? formatTimeFromTimestamp(lastRecord.timestamp) : '',
+            checkIn: checkInTime ? formatTimeFromTimestamp(checkInRecord.timestamp) : '',
+            checkOut: checkOutTime ? formatTimeFromTimestamp(checkOutRecord.timestamp) : '',
             status: status,
             hoursWorked: hoursWorked
           };

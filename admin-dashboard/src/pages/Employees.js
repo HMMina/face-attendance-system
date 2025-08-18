@@ -20,6 +20,10 @@ import {
   DialogContent,
   DialogActions,
   TextField,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
   IconButton,
   Chip,
   Grid,
@@ -41,10 +45,11 @@ import {
   Person as PersonIcon,
   Work as WorkIcon
 } from '@mui/icons-material';
-import { getEmployees, addEmployee, updateEmployee, deleteEmployee } from '../services/api';
+import { getEmployees, getDepartments, addEmployee, updateEmployee, deleteEmployee } from '../services/api';
 
 export default function Employees() {
   const [employees, setEmployees] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -59,6 +64,7 @@ export default function Employees() {
     position: '',
     phone: ''
   });
+  const [customDepartment, setCustomDepartment] = useState('');
 
   const fetchEmployees = async () => {
     try {
@@ -67,7 +73,14 @@ export default function Employees() {
       const result = await getEmployees();
       
       if (result.success) {
-        setEmployees(result.data || []);
+        // Sort employees by employee_id in ascending order
+        const sortedEmployees = (result.data || []).sort((a, b) => {
+          // Handle null/undefined employee_id values
+          const idA = a.employee_id || '';
+          const idB = b.employee_id || '';
+          return idA.localeCompare(idB);
+        });
+        setEmployees(sortedEmployees);
       } else {
         throw new Error(result.error || 'Failed to fetch employees');
       }
@@ -88,21 +101,40 @@ export default function Employees() {
     }
   };
 
+  const fetchDepartments = async () => {
+    try {
+      const result = await getDepartments();
+      if (result.success) {
+        setDepartments(result.data || []);
+      } else {
+        // Fallback departments if API fails
+        setDepartments(['IT Department', 'HR Department', 'Finance Department', 'Marketing Department']);
+      }
+    } catch (err) {
+      console.error('Error fetching departments:', err);
+      // Fallback departments
+      setDepartments(['IT Department', 'HR Department', 'Finance Department', 'Marketing Department']);
+    }
+  };
+
   useEffect(() => {
     fetchEmployees();
+    fetchDepartments();
   }, []);
 
   const handleOpenDialog = (employee = null) => {
     if (employee) {
       setEditingEmployee(employee);
+      const isCustomDept = !departments.includes(employee.department);
       setFormData({
         name: employee.name,
         email: employee.email,
         employee_id: employee.employee_id,
-        department: employee.department,
+        department: isCustomDept ? 'custom' : employee.department,
         position: employee.position,
         phone: employee.phone
       });
+      setCustomDepartment(isCustomDept ? employee.department : '');
     } else {
       setEditingEmployee(null);
       setFormData({
@@ -113,6 +145,7 @@ export default function Employees() {
         position: '',
         phone: ''
       });
+      setCustomDepartment('');
     }
     setOpenDialog(true);
   };
@@ -128,6 +161,7 @@ export default function Employees() {
       position: '',
       phone: ''
     });
+    setCustomDepartment('');
   };
 
   const handleSaveEmployee = async () => {
@@ -135,13 +169,37 @@ export default function Employees() {
       setSaving(true);
       setError('');
       
+      // Validate required fields
+      if (!formData.name.trim()) {
+        throw new Error('Tên nhân viên là bắt buộc');
+      }
+      
+      // Handle custom department
+      const finalDepartment = formData.department === 'custom' ? customDepartment.trim() : formData.department;
+      
+      // Validate department if provided
+      if (formData.department === 'custom' && !customDepartment.trim()) {
+        throw new Error('Vui lòng nhập tên phòng ban tùy chỉnh');
+      }
+      
+      // Validate email format if provided
+      if (formData.email && !formData.email.includes('@')) {
+        throw new Error('Email không đúng định dạng');
+      }
+      
+      // Prepare final form data
+      const finalFormData = {
+        ...formData,
+        department: finalDepartment
+      };
+      
       let result;
       if (editingEmployee) {
         // Update existing employee
-        result = await updateEmployee(editingEmployee.id, formData);
+        result = await updateEmployee(editingEmployee.id, finalFormData);
       } else {
         // Add new employee
-        result = await addEmployee(formData);
+        result = await addEmployee(finalFormData);
       }
       
       if (result.success) {
@@ -184,6 +242,10 @@ export default function Employees() {
       ...prev,
       [name]: value
     }));
+  };
+
+  const handleCustomDepartmentChange = (e) => {
+    setCustomDepartment(e.target.value);
   };
 
   const getStatusColor = (status) => {
@@ -426,7 +488,8 @@ export default function Employees() {
                   name="employee_id"
                   value={formData.employee_id}
                   onChange={handleInputChange}
-                  required
+                  helperText="Để trống để tự động tạo (EMP001, EMP002, ...)"
+                  disabled={editingEmployee} // Không cho edit khi update
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -437,19 +500,45 @@ export default function Employees() {
                   type="email"
                   value={formData.email}
                   onChange={handleInputChange}
-                  required
+                  helperText="Email công ty của nhân viên"
                 />
               </Grid>
               <Grid item xs={12} sm={6}>
-                <TextField
-                  fullWidth
-                  label="Phòng ban"
-                  name="department"
-                  value={formData.department}
-                  onChange={handleInputChange}
-                  required
-                />
+                <FormControl fullWidth>
+                  <InputLabel>Phòng ban</InputLabel>
+                  <Select
+                    value={formData.department}
+                    label="Phòng ban"
+                    name="department"
+                    onChange={handleInputChange}
+                  >
+                    <MenuItem value="">
+                      <em>Chọn phòng ban</em>
+                    </MenuItem>
+                    {departments.map((dept, index) => (
+                      <MenuItem key={index} value={dept}>
+                        {dept}
+                      </MenuItem>
+                    ))}
+                    <MenuItem value="custom">
+                      <em>📝 Phòng ban khác (tùy chỉnh)</em>
+                    </MenuItem>
+                  </Select>
+                </FormControl>
               </Grid>
+              {formData.department === 'custom' && (
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    label="Tên phòng ban tùy chỉnh"
+                    value={customDepartment}
+                    onChange={handleCustomDepartmentChange}
+                    required
+                    helperText="Nhập tên phòng ban mới"
+                    autoFocus
+                  />
+                </Grid>
+              )}
               <Grid item xs={12} sm={6}>
                 <TextField
                   fullWidth
@@ -457,7 +546,7 @@ export default function Employees() {
                   name="position"
                   value={formData.position}
                   onChange={handleInputChange}
-                  required
+                  helperText="VD: Senior Developer, HR Manager, Marketing Specialist"
                 />
               </Grid>
               <Grid item xs={12}>
@@ -467,6 +556,7 @@ export default function Employees() {
                   name="phone"
                   value={formData.phone}
                   onChange={handleInputChange}
+                  helperText="Số điện thoại liên hệ"
                 />
               </Grid>
             </Grid>
