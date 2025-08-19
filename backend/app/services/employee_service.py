@@ -54,10 +54,17 @@ class EmployeeService:
             raise HTTPException(status_code=500, detail="Internal server error")
 
     @staticmethod
-    def get_employees(db: Session):
-        """Get all employees ordered by employee_id"""
+    def get_employees(db: Session, skip: int = 0, limit: int = 100, department: str = None):
+        """Get employees with pagination and filtering"""
         try:
-            return db.query(Employee).order_by(Employee.employee_id.asc()).all()
+            query = db.query(Employee)
+            
+            # Filter by department if provided
+            if department:
+                query = query.filter(Employee.department == department)
+            
+            # Apply pagination and ordering
+            return query.order_by(Employee.employee_id.asc()).offset(skip).limit(limit).all()
         except Exception as e:
             logger.error(f"Error fetching employees: {e}")
             raise HTTPException(status_code=500, detail="Error fetching employees")
@@ -119,9 +126,9 @@ def create_employee(db: Session, employee: EmployeeCreate):
     """Legacy function wrapper"""
     return EmployeeService.create_employee(db, employee)
 
-def get_employees(db: Session):
-    """Legacy function wrapper"""
-    return EmployeeService.get_employees(db)
+def get_employees(db: Session, skip: int = 0, limit: int = 100, department: str = None):
+    """Legacy function wrapper with pagination"""
+    return EmployeeService.get_employees(db, skip, limit, department)
 
 def get_employee(db: Session, employee_id: str):
     """Legacy function wrapper"""

@@ -69,6 +69,13 @@ const handleApiCall = async (apiCall) => {
 export const getEmployees = () => handleApiCall(() => api.get('/employees'));
 export const getDepartments = () => handleApiCall(() => api.get('/employees/departments'));
 export const addEmployee = (data) => handleApiCall(() => api.post('/employees', data));
+export const addEmployeeWithPhoto = (formData) => handleApiCall(() => 
+  api.post('/employees/with-photo', formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  })
+);
 export const updateEmployee = (id, data) => handleApiCall(() => api.put(`/employees/${id}`, data));
 export const deleteEmployee = (id) => handleApiCall(() => api.delete(`/employees/${id}`));
 

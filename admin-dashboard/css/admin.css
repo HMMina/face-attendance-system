@@ -286,3 +286,35 @@ body {
 .rounded-lg {
     border-radius: 8px !important;
 }
+
+/* Face Upload Section */
+.card .card-header {
+    background-color: #f8f9fa;
+    border-bottom: 1px solid #dee2e6;
+}
+
+.card .card-body {
+    padding: 1.5rem;
+}
+
+#imagePreview img {
+    border: 2px solid #dee2e6;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+}
+
+#uploadStatus,
+#uploadResult {
+    margin-top: 1rem;
+}
+
+.form-control[type="file"] {
+    border: 2px dashed #dee2e6;
+    padding: 0.75rem;
+    background: #f8f9fa;
+}
+
+.form-control[type="file"]:hover {
+    border-color: #0d6efd;
+    background: #e3f2fd;
+}

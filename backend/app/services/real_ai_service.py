@@ -23,8 +23,14 @@ class RealAIService:
     Production AI service with real model implementations
     """
     
-    def __init__(self, model_path: str = "data/models"):
-        self.model_path = Path(model_path)
+    def __init__(self, model_path: str = None):
+        # Set default model path relative to backend directory
+        if model_path is None:
+            backend_root = Path(__file__).parent.parent.parent
+            self.model_path = backend_root / "data" / "models"
+        else:
+            self.model_path = Path(model_path)
+            
         self.logger = logging.getLogger(__name__)
         
         # Models will be loaded here
@@ -36,131 +42,222 @@ class RealAIService:
         self._load_models()
     
     def _load_models(self):
-        """Load all AI models with fallback options"""
+        """Load all AI models with optimized error handling and logging"""
+        self.logger.info(f"Loading AI models from: {self.model_path}")
+        
+        # Check if model directory exists
+        if not self.model_path.exists():
+            self.logger.error(f"Model directory not found: {self.model_path}")
+            raise FileNotFoundError(f"Model directory not found: {self.model_path}")
+        
+        # Track loading success
+        loaded_models = []
+        
         try:
-            # 1. Load Face Detection Model (Priority order)
-            self._load_face_detector()
+            # 1. Load Face Detection Model (Critical - Required)
+            if self._load_face_detector():
+                loaded_models.append("Face Detection")
+            else:
+                raise Exception("Critical: Face detection model failed to load")
             
-            # 2. Load Anti-Spoofing Model (Priority order)
-            self._load_anti_spoof_model()
+            # 2. Load Anti-Spoofing Model (Optional - Graceful degradation)
+            if self._load_anti_spoof_model():
+                loaded_models.append("Anti-Spoofing")
+            else:
+                self.logger.warning("Anti-spoofing model not loaded - will use fallback")
             
-            # 3. Load Face Recognition Model (Priority order)
-            self._load_face_recognizer()
+            # 3. Load Face Recognition Model (Critical - Required)
+            if self._load_face_recognizer():
+                loaded_models.append("Face Recognition")
+            else:
+                raise Exception("Critical: Face recognition model failed to load")
+            
+            self.logger.info(f"✅ Successfully loaded models: {', '.join(loaded_models)}")
             
         except Exception as e:
-            self.logger.error(f"Model loading error: {e}")
+            self.logger.error(f"❌ Model loading failed: {e}")
+            self.logger.info("Available models in directory:")
+            for category in ['detection', 'classification', 'recognition']:
+                cat_path = self.model_path / category
+                if cat_path.exists():
+                    files = list(cat_path.glob('*'))
+                    self.logger.info(f"  {category}: {[f.name for f in files if f.is_file()]}")
+                else:
+                    self.logger.info(f"  {category}: directory not found")
             raise
     
-    def _load_face_detector(self):
-        """Load face detection model with priority order"""
+    def _load_face_detector(self) -> bool:
+        """Load face detection model with optimized priority order"""
         try:
             from ultralytics import YOLO
             
-            # Priority order for face detection models
+            # Priority order for face detection models (most reliable first)
             detector_options = [
-                self.model_path / "detection" / "yolov11s.pt",
-                self.model_path / "detection" / "yolov8n-face.pt",
-                self.model_path / "detection" / "yolov8n.pt",
-                "yolov11s.pt"  # Auto-download fallback
+                ("Local YOLOv11s", self.model_path / "detection" / "yolov11s.pt"),
+                ("Local YOLOv8n-face", self.model_path / "detection" / "yolov8n-face.pt"),
+                ("Local YOLOv8n", self.model_path / "detection" / "yolov8n.pt"),
+                ("Auto-download YOLOv11s", "yolov11s.pt"),
+                ("Auto-download YOLOv8n", "yolov8n.pt")
             ]
             
-            for detector_path in detector_options:
+            for model_name, model_path in detector_options:
                 try:
-                    if isinstance(detector_path, Path) and detector_path.exists():
-                        self.face_detector = YOLO(str(detector_path))
-                        self.logger.info(f"Face detector loaded: {detector_path}")
-                        return
-                    elif isinstance(detector_path, str):
-                        # Auto-download from Ultralytics
-                        self.face_detector = YOLO(detector_path)
-                        self.logger.info(f"Face detector auto-downloaded: {detector_path}")
-                        return
+                    if isinstance(model_path, Path):
+                        if model_path.exists():
+                            size_mb = model_path.stat().st_size / (1024*1024)
+                            self.logger.info(f"Loading {model_name} ({size_mb:.1f}MB)...")
+                            self.face_detector = YOLO(str(model_path))
+                            self.logger.info(f"✅ {model_name} loaded successfully")
+                            return True
+                        else:
+                            self.logger.debug(f"⏭️ {model_name} not found: {model_path}")
+                            continue
+                    else:
+                        # Auto-download option
+                        self.logger.info(f"Attempting {model_name}...")
+                        self.face_detector = YOLO(model_path)
+                        self.logger.info(f"✅ {model_name} downloaded and loaded")
+                        return True
+                        
                 except Exception as e:
-                    self.logger.warning(f"Failed to load {detector_path}: {e}")
+                    self.logger.warning(f"❌ Failed to load {model_name}: {e}")
                     continue
             
-            raise Exception("No face detection model could be loaded")
+            self.logger.error("❌ No face detection model could be loaded")
+            return False
             
-        except ImportError:
-            self.logger.error("Ultralytics not installed. Please install: pip install ultralytics")
-            raise
+        except ImportError as e:
+            self.logger.error(f"❌ Ultralytics not installed: {e}")
+            self.logger.info("💡 Install with: pip install ultralytics")
+            return False
     
-    def _load_anti_spoof_model(self):
-        """Load anti-spoofing model with priority order"""
+    def _load_anti_spoof_model(self) -> bool:
+        """Load anti-spoofing model with graceful degradation"""
         try:
             from ultralytics import YOLO
             
             # Priority order for anti-spoofing models
             spoof_options = [
-                self.model_path / "classification" / "yolov11s-cls.pt",
-                self.model_path / "classification" / "antispoofing.onnx",
-                self.model_path / "classification" / "yolov8n-cls.pt"
+                ("Local YOLOv11s-cls", self.model_path / "classification" / "yolov11s-cls.pt", "yolo"),
+                ("Local ONNX Anti-spoof", self.model_path / "classification" / "antispoofing.onnx", "onnx"),
+                ("Local YOLOv8n-cls", self.model_path / "classification" / "yolov8n-cls.pt", "yolo"),
+                ("Auto-download YOLOv11s-cls", "yolov11s-cls.pt", "yolo")
             ]
             
-            for spoof_path in spoof_options:
+            for model_name, model_path, model_type in spoof_options:
                 try:
-                    if spoof_path.exists():
-                        if spoof_path.suffix == '.pt':
-                            self.anti_spoof_model = YOLO(str(spoof_path))
-                        elif spoof_path.suffix == '.onnx':
-                            # Load ONNX model for anti-spoofing
-                            import onnxruntime as ort
-                            self.anti_spoof_model = ort.InferenceSession(str(spoof_path))
+                    if isinstance(model_path, Path):
+                        if model_path.exists():
+                            size_mb = model_path.stat().st_size / (1024*1024)
+                            self.logger.info(f"Loading {model_name} ({size_mb:.1f}MB)...")
+                            
+                            if model_type == "yolo":
+                                self.anti_spoof_model = YOLO(str(model_path))
+                            elif model_type == "onnx":
+                                import onnxruntime as ort
+                                self.anti_spoof_model = ort.InferenceSession(str(model_path))
+                            
+                            self.logger.info(f"✅ {model_name} loaded successfully")
+                            return True
+                        else:
+                            self.logger.debug(f"⏭️ {model_name} not found: {model_path}")
+                            continue
+                    else:
+                        # Auto-download option
+                        self.logger.info(f"Attempting {model_name}...")
+                        self.anti_spoof_model = YOLO(model_path)
+                        self.logger.info(f"✅ {model_name} downloaded and loaded")
+                        return True
                         
-                        self.logger.info(f"Anti-spoofing model loaded: {spoof_path}")
-                        return
                 except Exception as e:
-                    self.logger.warning(f"Failed to load {spoof_path}: {e}")
+                    self.logger.warning(f"❌ Failed to load {model_name}: {e}")
                     continue
             
-            self.logger.warning("No anti-spoofing model loaded - using mock implementation")
+            self.logger.warning("⚠️ No anti-spoofing model loaded - using permissive mode")
             self.anti_spoof_model = None
+            return False  # Not critical, graceful degradation
             
         except ImportError as e:
-            self.logger.warning(f"Anti-spoofing dependencies missing: {e}")
+            self.logger.warning(f"⚠️ Anti-spoofing dependencies missing: {e}")
             self.anti_spoof_model = None
+            return False
     
-    def _load_face_recognizer(self):
-        """Load face recognition model with priority order"""
+    def _load_face_recognizer(self) -> bool:
+        """Load face recognition model with optimized provider selection"""
         try:
             import insightface
             
-            # Priority order for face recognition models  
+            # Priority order for face recognition models
             recognition_options = [
-                ("buffalo_l", self.model_path / "recognition" / "buffalo_l"),
-                ("buffalo_s", self.model_path / "recognition" / "buffalo_s"),
-                ("buffalo_l", None),  # Auto-download fallback
+                ("Local Buffalo_L", "buffalo_l", self.model_path / "recognition" / "buffalo_l"),
+                ("Local Buffalo_S", "buffalo_s", self.model_path / "recognition" / "buffalo_s"),
+                ("Auto-download Buffalo_L", "buffalo_l", None),
+                ("Auto-download Buffalo_S", "buffalo_s", None),
             ]
             
-            for model_name, model_path in recognition_options:
+            # Detect available providers (CPU/GPU)
+            try:
+                import onnxruntime as ort
+                available_providers = ort.get_available_providers()
+                if 'CUDAExecutionProvider' in available_providers:
+                    providers = ['CUDAExecutionProvider', 'CPUExecutionProvider']
+                    self.logger.info("🚀 CUDA available - using GPU acceleration")
+                else:
+                    providers = ['CPUExecutionProvider']
+                    self.logger.info("💻 Using CPU execution")
+            except ImportError:
+                providers = ['CPUExecutionProvider']
+                self.logger.warning("⚠️ ONNXRuntime not found, using default providers")
+            
+            for model_name, model_key, model_path in recognition_options:
                 try:
                     if model_path and model_path.exists():
-                        # Load from local path
+                        # Calculate total size for local models
+                        total_size = sum(f.stat().st_size for f in model_path.glob('*.onnx'))
+                        size_mb = total_size / (1024*1024)
+                        self.logger.info(f"Loading {model_name} ({size_mb:.1f}MB)...")
+                        
+                        # Load from local path with custom root
                         self.face_recognizer = insightface.app.FaceAnalysis(
-                            name=model_name,
+                            name=model_key,
                             root=str(model_path.parent),
-                            providers=['CPUExecutionProvider']
+                            providers=providers
                         )
                     else:
-                        # Auto-download
+                        if model_path:
+                            self.logger.debug(f"⏭️ {model_name} not found: {model_path}")
+                            continue
+                        
+                        # Auto-download option
+                        self.logger.info(f"Attempting {model_name}...")
                         self.face_recognizer = insightface.app.FaceAnalysis(
-                            name=model_name,
-                            providers=['CPUExecutionProvider']
+                            name=model_key,
+                            providers=providers
                         )
                     
+                    # Prepare the model
                     self.face_recognizer.prepare(ctx_id=0, det_size=(640, 640))
-                    self.logger.info(f"Face recognizer loaded: {model_name}")
-                    return
+                    self.logger.info(f"✅ {model_name} loaded and prepared successfully")
+                    
+                    # Test the model with dummy data
+                    import numpy as np
+                    test_img = np.zeros((100, 100, 3), dtype=np.uint8)
+                    faces = self.face_recognizer.get(test_img)
+                    self.logger.info(f"🧪 Model test complete - detected {len(faces)} faces in test image")
+                    
+                    return True
                     
                 except Exception as e:
-                    self.logger.warning(f"Failed to load {model_name}: {e}")
+                    self.logger.warning(f"❌ Failed to load {model_name}: {e}")
                     continue
             
-            raise Exception("No face recognition model could be loaded")
+            self.logger.error("❌ No face recognition model could be loaded")
+            return False
             
-        except ImportError:
-            self.logger.error("InsightFace not installed. Please install: pip install insightface")
-            raise
+        except ImportError as e:
+            self.logger.error(f"❌ InsightFace not installed: {e}")
+            self.logger.info("💡 Install with: pip install insightface")
+            return False
     
     def detect_face(self, image: np.ndarray) -> Tuple[bool, Optional[tuple]]:
         """
@@ -296,7 +393,121 @@ class RealAIService:
             self.logger.error(f"Embedding matching error: {e}")
             return None, 0.0
     
-    def process_recognition(self, image_bytes: bytes, device_id: str, db: Session) -> dict:
+    async def process_recognition(self, image_data, confidence: float = 0.95) -> dict:
+        """
+        Optimized face recognition pipeline for admin upload
+        """
+        try:
+            # 1. Decode image from different sources
+            if isinstance(image_data, bytes):
+                nparr = np.frombuffer(image_data, np.uint8)
+                image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            elif isinstance(image_data, np.ndarray):
+                image = image_data
+            else:
+                return {
+                    "face_detected": False,
+                    "message": "Invalid image format",
+                    "success": False
+                }
+            
+            if image is None:
+                return {
+                    "face_detected": False,
+                    "message": "Could not decode image",
+                    "success": False
+                }
+            
+            # 2. Image preprocessing and validation
+            height, width = image.shape[:2]
+            if width < 100 or height < 100:
+                return {
+                    "face_detected": False,
+                    "message": "Image too small (minimum 100x100 pixels)",
+                    "success": False
+                }
+            
+            # 3. Face detection with enhanced logging
+            self.logger.debug(f"Processing image: {width}x{height}")
+            found, bbox = self.detect_face(image)
+            
+            if not found:
+                return {
+                    "face_detected": False,
+                    "message": "No face detected in image",
+                    "success": False,
+                    "image_size": f"{width}x{height}"
+                }
+            
+            # 4. Face quality assessment
+            x1, y1, x2, y2 = bbox
+            face_width = x2 - x1
+            face_height = y2 - y1
+            face_area_ratio = (face_width * face_height) / (width * height)
+            
+            # Quality checks
+            quality_score = 1.0
+            quality_issues = []
+            
+            if face_area_ratio < 0.05:  # Face too small
+                quality_score *= 0.7
+                quality_issues.append("Face is small in image")
+            
+            if face_width < 80 or face_height < 80:
+                quality_score *= 0.8
+                quality_issues.append("Low resolution face")
+            
+            # 5. Anti-spoofing check (if available)
+            is_real = True
+            if self.anti_spoof_model is not None:
+                is_real = self.anti_spoofing(image, bbox)
+                if not is_real:
+                    return {
+                        "face_detected": True,
+                        "is_real": False,
+                        "message": "Possible spoof detected - please use a real photo",
+                        "success": False,
+                        "bbox": bbox,
+                        "quality_score": quality_score
+                    }
+            else:
+                self.logger.warning("Anti-spoofing disabled - skipping spoof detection")
+            
+            # 6. Extract embedding
+            embedding = self.extract_embedding(image)
+            if embedding is None:
+                return {
+                    "face_detected": True,
+                    "is_real": is_real,
+                    "message": "Failed to extract face features",
+                    "success": False,
+                    "bbox": bbox
+                }
+            
+            # 7. Successful processing result
+            return {
+                "face_detected": True,
+                "is_real": is_real,
+                "success": True,
+                "embedding": embedding.tolist(),  # Convert to list for JSON serialization
+                "confidence": float(confidence),
+                "bbox": bbox,
+                "face_quality": quality_score,
+                "image_size": f"{width}x{height}",
+                "face_size": f"{face_width}x{face_height}",
+                "face_area_ratio": face_area_ratio,
+                "quality_issues": quality_issues,
+                "message": "Face processed successfully"
+            }
+            
+        except Exception as e:
+            self.logger.error(f"Recognition pipeline error: {e}")
+            return {
+                "face_detected": False,
+                "is_real": False,
+                "success": False,
+                "message": f"Processing error: {str(e)}"
+            }
         """
         Complete face recognition pipeline with database integration
         """
@@ -475,6 +686,78 @@ class RealAIService:
                 "success": False,
                 "message": f"Registration error: {str(e)}"
             }
+
+    def get_model_info(self) -> dict:
+        """Get comprehensive model information and status"""
+        try:
+            model_info = {
+                "model_path": str(self.model_path),
+                "models_loaded": {},
+                "system_info": {},
+                "performance": {}
+            }
+            
+            # Face Detection Model Info
+            if self.face_detector is not None:
+                try:
+                    model_info["models_loaded"]["face_detection"] = {
+                        "status": "loaded",
+                        "type": "YOLOv11s",
+                        "framework": "Ultralytics",
+                        "device": str(self.face_detector.device) if hasattr(self.face_detector, 'device') else "unknown"
+                    }
+                except:
+                    model_info["models_loaded"]["face_detection"] = {"status": "loaded", "details": "limited_info"}
+            else:
+                model_info["models_loaded"]["face_detection"] = {"status": "not_loaded"}
+            
+            # Anti-Spoofing Model Info
+            if self.anti_spoof_model is not None:
+                model_info["models_loaded"]["anti_spoofing"] = {
+                    "status": "loaded",
+                    "type": "YOLOv11s-cls" if hasattr(self.anti_spoof_model, 'model') else "ONNX",
+                    "framework": "Ultralytics" if hasattr(self.anti_spoof_model, 'model') else "ONNXRuntime"
+                }
+            else:
+                model_info["models_loaded"]["anti_spoofing"] = {"status": "not_loaded", "fallback": "permissive_mode"}
+            
+            # Face Recognition Model Info
+            if self.face_recognizer is not None:
+                try:
+                    model_info["models_loaded"]["face_recognition"] = {
+                        "status": "loaded",
+                        "type": "InsightFace Buffalo_L",
+                        "framework": "InsightFace",
+                        "embedding_dim": 512,
+                        "det_size": "640x640"
+                    }
+                except:
+                    model_info["models_loaded"]["face_recognition"] = {"status": "loaded", "details": "limited_info"}
+            else:
+                model_info["models_loaded"]["face_recognition"] = {"status": "not_loaded"}
+            
+            # System Information
+            try:
+                import psutil
+                import platform
+                model_info["system_info"] = {
+                    "platform": platform.system(),
+                    "cpu_count": psutil.cpu_count(),
+                    "memory_gb": round(psutil.virtual_memory().total / (1024**3), 1),
+                    "python_version": platform.python_version()
+                }
+            except ImportError:
+                model_info["system_info"] = {"status": "psutil_not_available"}
+            
+            # Performance metrics (if available)
+            if hasattr(self, '_performance_metrics'):
+                model_info["performance"] = self._performance_metrics
+            
+            return model_info
+            
+        except Exception as e:
+            self.logger.error(f"Error getting model info: {e}")
+            return {"error": str(e), "model_path": str(self.model_path)}
 
 # Global instance
 ai_service = None

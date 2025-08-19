@@ -31,7 +31,9 @@ import {
   CardContent,
   CircularProgress,
   Alert,
-  Snackbar
+  Snackbar,
+  Avatar,
+  Badge
 } from '@mui/material';
 import {
   People as PeopleIcon,
@@ -43,9 +45,11 @@ import {
   Assessment as ReportsIcon,
   Devices as DevicesIcon,
   Person as PersonIcon,
-  Work as WorkIcon
+  Work as WorkIcon,
+  PhotoCamera as PhotoCameraIcon,
+  CloudUpload as CloudUploadIcon
 } from '@mui/icons-material';
-import { getEmployees, getDepartments, addEmployee, updateEmployee, deleteEmployee } from '../services/api';
+import { getEmployees, getDepartments, addEmployee, addEmployeeWithPhoto, updateEmployee, deleteEmployee } from '../services/api';
 
 export default function Employees() {
   const [employees, setEmployees] = useState([]);
@@ -65,6 +69,11 @@ export default function Employees() {
     phone: ''
   });
   const [customDepartment, setCustomDepartment] = useState('');
+  
+  // Photo upload states
+  const [selectedPhoto, setSelectedPhoto] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const [photoUploading, setPhotoUploading] = useState(false);
 
   const fetchEmployees = async () => {
     try {
@@ -162,6 +171,47 @@ export default function Employees() {
       phone: ''
     });
     setCustomDepartment('');
+    // Reset photo states
+    setSelectedPhoto(null);
+    setPhotoPreview(null);
+    setPhotoUploading(false);
+  };
+
+  // Photo handling functions
+  const handlePhotoSelect = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      // Validate file type
+      if (!file.type.startsWith('image/')) {
+        setError('Vui lòng chọn file ảnh (JPG, PNG, GIF...)');
+        return;
+      }
+      
+      // Validate file size (5MB max)
+      if (file.size > 5 * 1024 * 1024) {
+        setError('Kích thước ảnh không được vượt quá 5MB');
+        return;
+      }
+      
+      setSelectedPhoto(file);
+      
+      // Create preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setPhotoPreview(e.target.result);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const removePhoto = () => {
+    setSelectedPhoto(null);
+    setPhotoPreview(null);
+    // Reset file input
+    const fileInput = document.getElementById('photo-upload-input');
+    if (fileInput) {
+      fileInput.value = '';
+    }
   };
 
   const handleSaveEmployee = async () => {
@@ -195,11 +245,27 @@ export default function Employees() {
       
       let result;
       if (editingEmployee) {
-        // Update existing employee
+        // Update existing employee (without photo for now)
         result = await updateEmployee(editingEmployee.id, finalFormData);
       } else {
         // Add new employee
-        result = await addEmployee(finalFormData);
+        if (selectedPhoto) {
+          // Create FormData for multipart upload
+          const formDataWithPhoto = new FormData();
+          formDataWithPhoto.append('name', finalFormData.name);
+          formDataWithPhoto.append('email', finalFormData.email || '');
+          formDataWithPhoto.append('employee_id', finalFormData.employee_id || '');
+          formDataWithPhoto.append('department', finalFormData.department || '');
+          formDataWithPhoto.append('position', finalFormData.position || '');
+          formDataWithPhoto.append('phone', finalFormData.phone || '');
+          formDataWithPhoto.append('photo', selectedPhoto);
+          
+          setPhotoUploading(true);
+          result = await addEmployeeWithPhoto(formDataWithPhoto);
+        } else {
+          // Add without photo
+          result = await addEmployee(finalFormData);
+        }
       }
       
       if (result.success) {
@@ -214,6 +280,7 @@ export default function Employees() {
       setError(err.message || 'Không thể lưu thông tin nhân viên');
     } finally {
       setSaving(false);
+      setPhotoUploading(false);
     }
   };
 
@@ -558,6 +625,87 @@ export default function Employees() {
                   onChange={handleInputChange}
                   helperText="Số điện thoại liên hệ"
                 />
+              </Grid>
+              
+              {/* Photo Upload Section */}
+              <Grid item xs={12}>
+                <Card variant="outlined" sx={{ mt: 2 }}>
+                  <CardContent>
+                    <Box display="flex" alignItems="center" gap={1} mb={2}>
+                      <PhotoCameraIcon color="primary" />
+                      <Typography variant="h6">Upload ảnh thẻ nhân viên</Typography>
+                    </Box>
+                    
+                    <Grid container spacing={2} alignItems="center">
+                      <Grid item xs={12} sm={6}>
+                        <input
+                          accept="image/*"
+                          style={{ display: 'none' }}
+                          id="photo-upload-input"
+                          type="file"
+                          onChange={handlePhotoSelect}
+                        />
+                        <label htmlFor="photo-upload-input">
+                          <Button
+                            variant="outlined"
+                            component="span"
+                            startIcon={<CloudUploadIcon />}
+                            fullWidth
+                            disabled={photoUploading}
+                          >
+                            Chọn ảnh thẻ
+                          </Button>
+                        </label>
+                        <Typography variant="caption" display="block" sx={{ mt: 1, color: 'text.secondary' }}>
+                          Định dạng JPG, PNG. Tối đa 5MB
+                        </Typography>
+                      </Grid>
+                      
+                      {photoPreview && (
+                        <Grid item xs={12} sm={6}>
+                          <Box textAlign="center">
+                            <Badge
+                              overlap="circular"
+                              anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
+                              badgeContent={
+                                <IconButton
+                                  size="small"
+                                  onClick={removePhoto}
+                                  sx={{ 
+                                    backgroundColor: 'error.main',
+                                    color: 'white',
+                                    '&:hover': { backgroundColor: 'error.dark' },
+                                    width: 20,
+                                    height: 20
+                                  }}
+                                >
+                                  ×
+                                </IconButton>
+                              }
+                            >
+                              <Avatar
+                                src={photoPreview}
+                                sx={{ width: 120, height: 120, border: '2px solid #ddd' }}
+                              />
+                            </Badge>
+                            <Typography variant="caption" display="block" sx={{ mt: 1 }}>
+                              {selectedPhoto?.name}
+                            </Typography>
+                          </Box>
+                        </Grid>
+                      )}
+                      
+                      {photoUploading && (
+                        <Grid item xs={12}>
+                          <Box display="flex" alignItems="center" gap={2}>
+                            <CircularProgress size={20} />
+                            <Typography variant="body2">Đang xử lý ảnh...</Typography>
+                          </Box>
+                        </Grid>
+                      )}
+                    </Grid>
+                  </CardContent>
+                </Card>
               </Grid>
             </Grid>
           </DialogContent>

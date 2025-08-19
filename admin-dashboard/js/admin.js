@@ -257,20 +257,34 @@ function clearFilters() {
 
 // Show Add Employee Modal
 function showAddEmployeeModal() {
+    console.log('Opening Add Employee Modal...');
     currentEmployee = null;
     document.getElementById('employeeModalTitle').textContent = 'Thêm nhân viên mới';
     
     // Reset form
     const form = document.getElementById('employeeForm');
-    form.reset();
-    form.classList.remove('was-validated');
+    if (form) {
+        form.reset();
+        form.classList.remove('was-validated');
+    }
     
     // Reset file upload
     resetFaceUpload();
     
-    // Show modal
-    const modal = new bootstrap.Modal(document.getElementById('employeeModal'));
-    modal.show();
+    // Show modal with both jQuery and Bootstrap 5 methods
+    const modalElement = document.getElementById('employeeModal');
+    if (modalElement) {
+        // Try Bootstrap 5 method first
+        const modal = new bootstrap.Modal(modalElement);
+        modal.show();
+        
+        // Fallback to jQuery method
+        $('#employeeModal').modal('show');
+        
+        console.log('Modal should be visible now');
+    } else {
+        console.error('Modal element not found!');
+    }
 }
 
 // Edit Employee
@@ -322,44 +336,75 @@ async function saveEmployee() {
     try {
         showLoading('Đang lưu thông tin nhân viên...');
         
-        const employeeData = {
-            employee_id: document.getElementById('employeeId').value,
-            name: document.getElementById('employeeName').value,
-            department: document.getElementById('employeeDepartment').value,
-            position: document.getElementById('employeePosition').value,
-            email: document.getElementById('employeeEmail').value,
-            phone: document.getElementById('employeePhone').value
-        };
-        
-        let response;
-        if (currentEmployee) {
-            // Update existing employee
-            response = await fetch(`${API_BASE_URL}/employees/${currentEmployee.employee_id}`, {
-                method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(employeeData)
-            });
-        } else {
-            // Create new employee
-            response = await fetch(`${API_BASE_URL}/employees/`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(employeeData)
-            });
-        }
-        
-        if (!response.ok) {
-            const errorData = await response.json();
-            throw new Error(errorData.detail || 'Failed to save employee');
-        }
-        
-        const savedEmployee = await response.json();
-        console.log('✅ Employee saved:', savedEmployee);
-        
-        // Handle face upload if provided
         const faceFile = document.getElementById('faceUpload').files[0];
-        if (faceFile) {
-            await uploadEmployeeFace(savedEmployee.employee_id, faceFile);
+        
+        if (!currentEmployee && faceFile) {
+            // Create new employee with photo using FormData
+            const formData = new FormData();
+            formData.append('name', document.getElementById('employeeName').value);
+            formData.append('department', document.getElementById('employeeDepartment').value || '');
+            formData.append('position', document.getElementById('employeePosition').value || '');
+            formData.append('email', document.getElementById('employeeEmail').value || '');
+            formData.append('phone', document.getElementById('employeePhone').value || '');
+            formData.append('employee_id', document.getElementById('employeeId').value || '');
+            formData.append('photo', faceFile);
+            
+            const response = await fetch(`${API_BASE_URL}/employees/with-photo`, {
+                method: 'POST',
+                body: formData
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || 'Failed to create employee with photo');
+            }
+            
+            const result = await response.json();
+            console.log('✅ Employee created with photo:', result);
+            
+            // Show detailed result
+            showEmployeeCreationResult(result);
+            
+        } else {
+            // Standard employee creation/update without photo or update existing
+            const employeeData = {
+                employee_id: document.getElementById('employeeId').value,
+                name: document.getElementById('employeeName').value,
+                department: document.getElementById('employeeDepartment').value,
+                position: document.getElementById('employeePosition').value,
+                email: document.getElementById('employeeEmail').value,
+                phone: document.getElementById('employeePhone').value
+            };
+            
+            let response;
+            if (currentEmployee) {
+                // Update existing employee
+                response = await fetch(`${API_BASE_URL}/employees/${currentEmployee.employee_id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(employeeData)
+                });
+            } else {
+                // Create new employee without photo
+                response = await fetch(`${API_BASE_URL}/employees/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(employeeData)
+                });
+            }
+            
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.detail || 'Failed to save employee');
+            }
+            
+            const savedEmployee = await response.json();
+            console.log('✅ Employee saved:', savedEmployee);
+            
+            // Handle face upload for existing employee
+            if (faceFile && currentEmployee) {
+                await uploadAdditionalPhoto(savedEmployee.employee_id, faceFile);
+            }
         }
         
         // Close modal and refresh data
@@ -367,7 +412,6 @@ async function saveEmployee() {
         await loadEmployees();
         
         hideLoading();
-        showAlert(`Nhân viên ${savedEmployee.name} đã được ${currentEmployee ? 'cập nhật' : 'thêm'} thành công`, 'success');
         
     } catch (error) {
         console.error('❌ Error saving employee:', error);
@@ -716,6 +760,110 @@ function showAlert(message, type = 'info') {
             alertDiv.remove();
         }
     }, 5000);
+}
+
+// Show Employee Creation Result
+function showEmployeeCreationResult(result) {
+    const uploadResult = document.getElementById('uploadResult');
+    uploadResult.classList.remove('d-none');
+    
+    let alertClass = 'success';
+    let icon = 'fas fa-check-circle';
+    
+    if (!result.face_recognition?.face_detected) {
+        alertClass = 'warning';
+        icon = 'fas fa-exclamation-triangle';
+    }
+    
+    uploadResult.innerHTML = `
+        <div class="alert alert-${alertClass}">
+            <h6><i class="${icon}"></i> Kết quả xử lý</h6>
+            <ul class="mb-0">
+                <li><strong>Nhân viên:</strong> ${result.employee?.name} (${result.employee?.employee_id})</li>
+                <li><strong>Ảnh đã lưu:</strong> ${result.photo?.stored_locally ? 'Có' : 'Không'}</li>
+                ${result.photo?.file_size ? `<li><strong>Kích thước:</strong> ${formatFileSize(result.photo.file_size)}</li>` : ''}
+                ${result.photo?.dimensions ? `<li><strong>Kích thước ảnh:</strong> ${result.photo.dimensions}</li>` : ''}
+                <li><strong>Phát hiện khuôn mặt:</strong> ${result.face_recognition?.face_detected ? 'Có' : 'Không'}</li>
+                ${result.face_recognition?.face_quality ? `<li><strong>Chất lượng khuôn mặt:</strong> ${Math.round(result.face_recognition.face_quality * 100)}%</li>` : ''}
+                <li><strong>Embedding lưu trữ:</strong> ${result.face_recognition?.embedding_stored ? 'Có' : 'Không'}</li>
+                ${result.face_recognition?.processing_time ? `<li><strong>Thời gian xử lý:</strong> ${Math.round(result.face_recognition.processing_time * 1000)}ms</li>` : ''}
+            </ul>
+        </div>
+    `;
+    
+    // Auto hide after success
+    if (alertClass === 'success') {
+        setTimeout(() => {
+            uploadResult.classList.add('d-none');
+        }, 5000);
+    }
+}
+
+// Upload Additional Photo
+async function uploadAdditionalPhoto(employeeId, file) {
+    try {
+        showUploadStatus('Đang tải ảnh bổ sung...');
+        
+        const formData = new FormData();
+        formData.append('photo', file);
+        
+        const response = await fetch(`${API_BASE_URL}/employees/${employeeId}/photos/upload`, {
+            method: 'POST',
+            body: formData
+        });
+        
+        const result = await response.json();
+        
+        if (!response.ok) {
+            throw new Error(result.detail || 'Failed to upload photo');
+        }
+        
+        console.log('✅ Additional photo uploaded:', result);
+        showEmployeeCreationResult(result);
+        
+    } catch (error) {
+        console.error('❌ Error uploading additional photo:', error);
+        showUploadResult({ message: error.message }, 'error');
+    }
+}
+
+// Show Upload Status
+function showUploadStatus(message) {
+    const statusDiv = document.getElementById('uploadStatus');
+    statusDiv.classList.remove('d-none');
+    statusDiv.innerHTML = `
+        <div class="alert alert-info">
+            <i class="fas fa-spinner fa-spin"></i> ${message}
+        </div>
+    `;
+}
+
+// Hide Upload Status
+function hideUploadStatus() {
+    document.getElementById('uploadStatus').classList.add('d-none');
+}
+
+// Show Upload Result
+function showUploadResult(result, type) {
+    hideUploadStatus();
+    
+    const resultDiv = document.getElementById('uploadResult');
+    resultDiv.classList.remove('d-none');
+    
+    let alertClass = type === 'success' ? 'success' : 'danger';
+    let icon = type === 'success' ? 'fas fa-check-circle' : 'fas fa-exclamation-circle';
+    
+    resultDiv.innerHTML = `
+        <div class="alert alert-${alertClass}">
+            <h6><i class="${icon}"></i> ${type === 'success' ? 'Thành công' : 'Lỗi'}</h6>
+            <p class="mb-0">${result.message || 'Có lỗi xảy ra'}</p>
+        </div>
+    `;
+    
+    // Auto hide after 3 seconds
+    setTimeout(() => {
+        resultDiv.classList.add('d-none');
+    }, 3000);
 }
 
 // Format File Size
