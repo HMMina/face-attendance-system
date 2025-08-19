@@ -3,9 +3,13 @@ FastAPI entry point for Face Attendance System
 """
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 from app.api.v1 import employees, devices, attendance, auth, network, recognition, discovery
 from app.config.database import test_connection
 import logging
+import os
+from pathlib import Path
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -56,9 +60,28 @@ app.include_router(network.router, prefix="/api/v1/network", tags=["Network"])
 app.include_router(recognition.router, prefix="/api/v1/recognition", tags=["Recognition"])
 app.include_router(discovery.router, prefix="/api/v1/discovery", tags=["Discovery"])
 
+# Static files for admin dashboard
+admin_dashboard_path = Path(__file__).parent.parent.parent / "admin-dashboard"
+if admin_dashboard_path.exists():
+    app.mount("/admin", StaticFiles(directory=str(admin_dashboard_path)), name="admin")
+    
+    @app.get("/admin", include_in_schema=False)
+    async def admin_dashboard():
+        """Serve admin dashboard"""
+        return FileResponse(str(admin_dashboard_path / "index.html"))
+    
+    @app.get("/admin/", include_in_schema=False)
+    async def admin_dashboard_trailing_slash():
+        """Serve admin dashboard with trailing slash"""
+        return FileResponse(str(admin_dashboard_path / "index.html"))
+
 @app.get("/")
 def root():
-    return {"msg": "Face Attendance System Backend is running"}
+    return {
+        "msg": "Face Attendance System Backend is running",
+        "admin_dashboard": "http://localhost:8000/admin",
+        "api_docs": "http://localhost:8000/docs"
+    }
 
 @app.get("/test")
 def test_endpoint():

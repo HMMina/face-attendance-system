@@ -2,6 +2,7 @@
 Employee model
 """
 from sqlalchemy import Column, Integer, String, DateTime
+from sqlalchemy.orm import relationship
 from app.models.base import Base
 import datetime
 
@@ -15,3 +16,6 @@ class Employee(Base):
     phone = Column(String)
     position = Column(String)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
+    
+    # Relationship với face embeddings
+    face_embeddings = relationship("FaceEmbedding", back_populates="employee", cascade="all, delete-orphan")

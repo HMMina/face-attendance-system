@@ -110,4 +110,103 @@ class ApiService {
       return false;
     }
   }
+
+  /// Register face for an employee
+  static Future<Map<String, dynamic>> registerFace(
+    Uint8List imageBytes,
+    String employeeId,
+    String deviceId
+  ) async {
+    try {
+      // Get server URL from discovery service
+      final serverUrl = await DiscoveryService.getServerUrl();
+      if (serverUrl == null) {
+        return {
+          'success': false,
+          'error': 'Cannot find server',
+          'message': 'Server discovery failed'
+        };
+      }
+
+      // Prepare multipart request
+      final uri = Uri.parse('$serverUrl/api/v1/recognition/register');
+      final request = http.MultipartRequest('POST', uri);
+      
+      // Add employee ID and device ID
+      request.fields['employee_id'] = employeeId;
+      request.fields['device_id'] = deviceId;
+      
+      // Add image file
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'image',
+          imageBytes,
+          filename: 'face_registration_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        ),
+      );
+
+      // Set headers
+      request.headers['Content-Type'] = 'multipart/form-data';
+
+      // Send request with timeout
+      final response = await request.send().timeout(_timeout);
+      final responseData = await response.stream.bytesToString();
+
+      if (response.statusCode == 200) {
+        final data = json.decode(responseData);
+        return {
+          'success': true,
+          'message': data['message'] ?? 'Face registered successfully',
+          'employee_id': data['employee_id'] ?? employeeId,
+          'embedding_id': data['embedding_id'],
+          'is_primary': data['is_primary'] ?? false,
+        };
+      } else {
+        return {
+          'success': false,
+          'error': 'Server error',
+          'message': 'HTTP ${response.statusCode}: $responseData'
+        };
+      }
+
+    } catch (e) {
+      return {
+        'success': false,
+        'error': 'Connection error',
+        'message': e.toString()
+      };
+    }
+  }
+
+  /// Check AI service status
+  static Future<Map<String, dynamic>> checkAIStatus() async {
+    try {
+      final serverUrl = await DiscoveryService.getServerUrl();
+      if (serverUrl == null) {
+        return {
+          'ai_enabled': false,
+          'error': 'Server not found'
+        };
+      }
+
+      final response = await http.get(
+        Uri.parse('$serverUrl/api/v1/recognition/status'),
+        headers: {'Content-Type': 'application/json'},
+      ).timeout(_timeout);
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        return {
+          'ai_enabled': false,
+          'error': 'Status check failed'
+        };
+      }
+    } catch (e) {
+      return {
+        'ai_enabled': false,
+        'error': e.toString()
+      };
+    }
+  }
 }
