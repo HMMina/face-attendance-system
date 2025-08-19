@@ -285,9 +285,9 @@ class FaceRecognitionService:
                 "similarity_threshold": self.similarity_threshold,
                 "storage_path": storage_stats.get("storage_path", ""),
                 "ai_models_loaded": {
-                    "face_detection": self.ai_service.detection_model is not None,
-                    "anti_spoofing": self.ai_service.classification_model is not None,
-                    "face_recognition": self.ai_service.recognition_app is not None
+                    "face_detection": self.ai_service.face_detector is not None,
+                    "anti_spoofing": self.ai_service.anti_spoof_model is not None,
+                    "face_recognition": self.ai_service.face_recognizer is not None
                 }
             }
             

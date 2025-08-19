@@ -29,23 +29,58 @@ async def check_attendance(
         if not image.content_type.startswith('image/'):
             raise HTTPException(status_code=400, detail="File must be an image")
         
-        # TODO: Implement face recognition here
-        # For now, return mock response
+        # Use real AI face recognition
+        from app.services.face_recognition_service import FaceRecognitionService
+        import cv2
+        import numpy as np
         
-        # Save image
+        face_recognition_service = FaceRecognitionService()
+        
+        # Convert uploaded image to OpenCV format
+        image_data = await image.read()
+        nparr = np.frombuffer(image_data, np.uint8)
+        camera_image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+        
+        if camera_image is None:
+            raise HTTPException(status_code=400, detail="Invalid image format")
+        
+        # Save image first
         os.makedirs(UPLOAD_DIR, exist_ok=True)
         timestamp = datetime.datetime.now()
         file_path = os.path.join(UPLOAD_DIR, f"attendance_{device_id}_{timestamp.isoformat()}.jpg")
         
         with open(file_path, "wb") as f:
-            content = await image.read()
-            f.write(content)
+            f.write(image_data)
         
-        # Mock face recognition result
-        # In real implementation, this would call face recognition service
-        employee_id = "EMP001"  # Mock employee
-        employee_name = "John Doe"  # Mock name
-        confidence = 0.95  # Mock confidence
+        # Real face recognition
+        recognition_result = await face_recognition_service.recognize_face_from_camera(camera_image, db)
+        
+        if not recognition_result.get("recognized", False):
+            # Unknown person - save as unrecognized attendance
+            attendance = Attendance(
+                employee_id="UNKNOWN",
+                device_id=device_id,
+                confidence=0.0,
+                image_path=file_path,
+                timestamp=timestamp,
+                action_type="UNRECOGNIZED"
+            )
+            db.add(attendance)
+            db.commit()
+            db.refresh(attendance)
+            
+            return {
+                "success": False,
+                "message": "Person not recognized",
+                "attendance_id": attendance.id,
+                "timestamp": timestamp.isoformat(),
+                "confidence": 0.0
+            }
+        
+        # Recognized person - get employee details
+        employee_id = recognition_result.get("employee_id")
+        employee_name = recognition_result.get("employee_name")
+        confidence = recognition_result.get("confidence", 0.0)
         
         # Save attendance record
         attendance = Attendance(
@@ -53,7 +88,8 @@ async def check_attendance(
             device_id=device_id,
             confidence=confidence,
             image_path=file_path,
-            timestamp=timestamp
+            timestamp=timestamp,
+            action_type="RECOGNIZED"
         )
         db.add(attendance)
         db.commit()
