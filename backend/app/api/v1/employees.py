@@ -173,7 +173,7 @@ def get_employees_endpoint(
     """Get all employees with optional filtering"""
     return get_employees(db, skip=skip, limit=limit, department=department)
 
-@router.get("/departments/list")
+@router.get("/departments")
 def get_departments(db: Session = Depends(get_db)):
     """Get list of all departments"""
     departments = db.query(distinct(Employee.department)).filter(
@@ -515,19 +515,6 @@ def delete_employee_face(
         )
     
     return {"message": "Face embedding deleted successfully"}
-
-@router.get("/departments/list")
-def get_departments(db: Session = Depends(get_db)):
-    """Get list of all departments"""
-    departments = db.query(distinct(Employee.department)).filter(
-        Employee.department.isnot(None)
-    ).all()
-    
-    return {
-        "departments": [dept[0] for dept in departments if dept[0]]
-    }
-
-@router.get("/stats")
 def get_employee_stats(db: Session = Depends(get_db)):
     """Get employee statistics"""
     total_employees = db.query(Employee).count()
