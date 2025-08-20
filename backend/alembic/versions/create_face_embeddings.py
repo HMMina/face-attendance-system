@@ -13,7 +13,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers
 revision = 'create_face_embeddings'
-down_revision = None  # Replace with actual previous revision
+down_revision = '86307c2d5f84'  # Links to init migration
 branch_labels = None
 depends_on = None
 
@@ -51,12 +51,7 @@ def upgrade():
         ['employee_id']
     )
     
-    # Install pgvector extension for vector similarity search (if using PostgreSQL)
-    op.execute('CREATE EXTENSION IF NOT EXISTS vector')
-    
-    # Create vector similarity index (requires pgvector extension)
-    # Note: This might need to be done manually depending on your PostgreSQL setup
-    # op.execute('CREATE INDEX face_embedding_vector_idx ON face_embeddings USING ivfflat (embedding_vector vector_cosine_ops)')
+    # Note: pgvector extension not available, using standard ARRAY for embeddings
 
 def downgrade():
     # Drop indexes

@@ -29,12 +29,12 @@ async def check_attendance(
         if not image.content_type.startswith('image/'):
             raise HTTPException(status_code=400, detail="File must be an image")
         
-        # Use real AI face recognition
-        from app.services.face_recognition_service import FaceRecognitionService
+        # Use enhanced face recognition with template system
+        from app.services.enhanced_recognition_service import get_enhanced_recognition_service
         import cv2
         import numpy as np
         
-        face_recognition_service = FaceRecognitionService()
+        enhanced_recognition_service = get_enhanced_recognition_service()
         
         # Convert uploaded image to OpenCV format
         image_data = await image.read()
@@ -52,8 +52,8 @@ async def check_attendance(
         with open(file_path, "wb") as f:
             f.write(image_data)
         
-        # Real face recognition
-        recognition_result = await face_recognition_service.recognize_face_from_camera(camera_image, db)
+        # Enhanced face recognition with template learning
+        recognition_result = await enhanced_recognition_service.recognize_face(db, camera_image)
         
         if not recognition_result.get("recognized", False):
             # Unknown person - save as unrecognized attendance
@@ -71,18 +71,25 @@ async def check_attendance(
             
             return {
                 "success": False,
-                "message": "Person not recognized",
+                "message": recognition_result.get("message", "Person not recognized"),
                 "attendance_id": attendance.id,
                 "timestamp": timestamp.isoformat(),
-                "confidence": 0.0
+                "confidence": 0.0,
+                "recognition_details": {
+                    "best_similarity": recognition_result.get("best_similarity", 0.0),
+                    "confidence_level": "LOW"
+                }
             }
         
         # Recognized person - get employee details
         employee_id = recognition_result.get("employee_id")
-        employee_name = recognition_result.get("employee_name")
-        confidence = recognition_result.get("confidence", 0.0)
+        employee_name = recognition_result.get("employee_name", "Unknown")
+        confidence = recognition_result.get("similarity", 0.0)
+        confidence_level = recognition_result.get("confidence_level", "MEDIUM")
+        template_id = recognition_result.get("template_id")
+        template_order = recognition_result.get("template_order")
         
-        # Save attendance record
+        # Save attendance record with enhanced info
         attendance = Attendance(
             employee_id=employee_id,
             device_id=device_id,
@@ -95,15 +102,23 @@ async def check_attendance(
         db.commit()
         db.refresh(attendance)
         
-        logger.info(f"Attendance recorded for employee {employee_id} from device {device_id}")
+        logger.info(f"Enhanced attendance recorded for employee {employee_id} from device {device_id} "
+                   f"with confidence {confidence:.3f} using template {template_order}")
         
         return {
             "success": True,
             "employee_id": employee_id,
             "employee_name": employee_name,
             "confidence": confidence,
+            "confidence_level": confidence_level,
             "timestamp": timestamp.isoformat(),
-            "attendance_id": attendance.id
+            "attendance_id": attendance.id,
+            "recognition_details": {
+                "template_id": template_id,
+                "template_order": template_order,
+                "template_source": recognition_result.get("template_source"),
+                "similarity_score": confidence
+            }
         }
         
     except Exception as e:

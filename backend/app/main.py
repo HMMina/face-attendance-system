@@ -1,11 +1,12 @@
 """
-FastAPI entry point for Face Attendance System
+FastAPI entry point for Face Attendance System with Rolling Template System
 """
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 from app.api.v1 import employees, devices, attendance, auth, network, recognition, discovery
+from app.api import templates
 from app.config.database import test_connection
 import logging
 import os
@@ -59,6 +60,9 @@ app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
 app.include_router(network.router, prefix="/api/v1/network", tags=["Network"])
 app.include_router(recognition.router, prefix="/api/v1/recognition", tags=["Recognition"])
 app.include_router(discovery.router, prefix="/api/v1/discovery", tags=["Discovery"])
+
+# Include new Template Management API
+app.include_router(templates.router, tags=["Template Management"])
 
 # Static files for admin dashboard
 admin_dashboard_path = Path(__file__).parent.parent.parent / "admin-dashboard"
