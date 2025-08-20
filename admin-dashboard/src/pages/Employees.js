@@ -53,7 +53,7 @@ import { getEmployees, getDepartments, addEmployee, addEmployeeWithPhoto, update
 
 export default function Employees() {
   const [employees, setEmployees] = useState([]);
-  const [departments, setDepartments] = useState([]);
+  const [departments, setDepartments] = useState([]); // Ensure it's always an array
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -113,15 +113,15 @@ export default function Employees() {
   const fetchDepartments = async () => {
     try {
       const result = await getDepartments();
-      if (result.success) {
-        setDepartments(result.data || []);
+      if (result.success && Array.isArray(result.data)) {
+        setDepartments(result.data);
       } else {
         // Fallback departments if API fails
         setDepartments(['IT Department', 'HR Department', 'Finance Department', 'Marketing Department']);
       }
     } catch (err) {
       console.error('Error fetching departments:', err);
-      // Fallback departments
+      // Fallback departments - ensure it's always an array
       setDepartments(['IT Department', 'HR Department', 'Finance Department', 'Marketing Department']);
     }
   };
@@ -582,7 +582,7 @@ export default function Employees() {
                     <MenuItem value="">
                       <em>Chọn phòng ban</em>
                     </MenuItem>
-                    {departments.map((dept, index) => (
+                    {Array.isArray(departments) && departments.map((dept, index) => (
                       <MenuItem key={index} value={dept}>
                         {dept}
                       </MenuItem>
