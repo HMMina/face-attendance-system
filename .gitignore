@@ -49,6 +49,16 @@ postgresql.conf
 pg_hba.conf
 recovery.conf
 
+# Temporary documentation and test files (auto-generated)
+*_TESTING*.md
+*_ANALYSIS*.md
+*_GUIDE*.md
+*_SUMMARY*.md
+*_REPORT*.md
+OPTIMIZED_STRUCTURE.md
+test_*.py
+*.rm
+
 # Backup files
 backup/
 backups/
