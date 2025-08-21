@@ -49,7 +49,7 @@ import {
   PhotoCamera as PhotoCameraIcon,
   CloudUpload as CloudUploadIcon
 } from '@mui/icons-material';
-import { getEmployees, getDepartments, addEmployee, addEmployeeWithPhoto, updateEmployee, deleteEmployee } from '../services/api';
+import { getEmployees, getDepartments, addEmployee, addEmployeeWithPhoto, updateEmployee, uploadEmployeePhoto, deleteEmployee } from '../services/api';
 
 export default function Employees() {
   const [employees, setEmployees] = useState([]);
@@ -74,6 +74,39 @@ export default function Employees() {
   const [selectedPhoto, setSelectedPhoto] = useState(null);
   const [photoPreview, setPhotoPreview] = useState(null);
   const [photoUploading, setPhotoUploading] = useState(false);
+
+  const savePhotoToBackend = async (file, employeeId) => {
+    try {
+      setPhotoUploading(true);
+      console.log(`� Uploading photo for employee ${employeeId} to backend...`);
+      
+      const result = await uploadEmployeePhoto(employeeId, file);
+      
+      if (result.success) {
+        console.log(`✅ Photo uploaded successfully for ${employeeId}`);
+        console.log(`📁 Backend path: ${result.data.photo_path}`);
+        console.log(`🌐 Photo URL: ${result.data.photo_url}`);
+        return result.data.photo_url;
+      } else {
+        throw new Error(result.error || 'Failed to upload photo');
+      }
+    } catch (error) {
+      console.error(`❌ Failed to upload photo for ${employeeId}:`, error);
+      throw error;
+    } finally {
+      setPhotoUploading(false);
+    }
+  };
+
+  const getEmployeePhotoUrl = (employee) => {
+    // First check if employee has photo_path from backend
+    if (employee.photo_path) {
+      return `http://localhost:8000${employee.photo_path}`;
+    }
+    
+    // Fallback: try backend API endpoint
+    return `http://localhost:8000/api/v1/employees/${employee.employee_id}/photo`;
+  };
 
   const fetchEmployees = async () => {
     try {
@@ -245,12 +278,22 @@ export default function Employees() {
       
       let result;
       if (editingEmployee) {
-        // Update existing employee (without photo for now)
-        result = await updateEmployee(editingEmployee.id, finalFormData);
+        // Update existing employee - use employee_id instead of id
+        result = await updateEmployee(editingEmployee.employee_id, finalFormData);
+        
+        // Upload photo to backend if selected
+        if (selectedPhoto && result.success) {
+          try {
+            await savePhotoToBackend(selectedPhoto, editingEmployee.employee_id);
+          } catch (photoError) {
+            console.warn('Failed to upload photo to backend:', photoError);
+            setError('Cập nhật thông tin thành công nhưng upload ảnh thất bại');
+          }
+        }
       } else {
         // Add new employee
         if (selectedPhoto) {
-          // Create FormData for multipart upload
+          // Use addEmployeeWithPhoto API that handles both employee creation and photo upload
           const formDataWithPhoto = new FormData();
           formDataWithPhoto.append('name', finalFormData.name);
           formDataWithPhoto.append('email', finalFormData.email || '');
@@ -262,6 +305,7 @@ export default function Employees() {
           
           setPhotoUploading(true);
           result = await addEmployeeWithPhoto(formDataWithPhoto);
+          setPhotoUploading(false);
         } else {
           // Add without photo
           result = await addEmployee(finalFormData);
@@ -284,11 +328,11 @@ export default function Employees() {
     }
   };
 
-  const handleDeleteEmployee = async (id) => {
+  const handleDeleteEmployee = async (employee_id) => {
     if (window.confirm('Bạn có chắc chắn muốn xóa nhân viên này?')) {
       try {
         setError('');
-        const result = await deleteEmployee(id);
+        const result = await deleteEmployee(employee_id);
         
         if (result.success) {
           setSuccess('Xóa nhân viên thành công!');
@@ -471,6 +515,7 @@ export default function Employees() {
             <Table>
               <TableHead>
                 <TableRow>
+                  <TableCell>Ảnh</TableCell>
                   <TableCell>Mã NV</TableCell>
                   <TableCell>Họ tên</TableCell>
                   <TableCell>Email</TableCell>
@@ -484,6 +529,15 @@ export default function Employees() {
               <TableBody>
                 {employees.map((employee) => (
                   <TableRow key={employee.id}>
+                    <TableCell>
+                      <Avatar
+                        src={getEmployeePhotoUrl(employee)}
+                        alt={employee.name}
+                        sx={{ width: 75, height: 75 }}
+                      >
+                        <PersonIcon />
+                      </Avatar>
+                    </TableCell>
                     <TableCell>{employee.employee_id}</TableCell>
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center' }}>
@@ -518,7 +572,7 @@ export default function Employees() {
                       </IconButton>
                       <IconButton
                         color="error"
-                        onClick={() => handleDeleteEmployee(employee.id)}
+                        onClick={() => handleDeleteEmployee(employee.employee_id)}
                         size="small"
                       >
                         <DeleteIcon />
@@ -538,6 +592,53 @@ export default function Employees() {
           </DialogTitle>
           <DialogContent>
             <Grid container spacing={2} sx={{ mt: 1 }}>
+              {/* Photo Upload Section */}
+              <Grid item xs={12}>
+                <Box sx={{ textAlign: 'center', mb: 2 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Ảnh nhân viên
+                  </Typography>
+                  <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                    <Avatar
+                      src={photoPreview || (editingEmployee ? getEmployeePhotoUrl(editingEmployee) : null)}
+                      sx={{ width: 150, height: 150, bgcolor: 'grey.300' }}
+                    >
+                      <PhotoCameraIcon sx={{ fontSize: 60 }} />
+                    </Avatar>
+                    
+                    <Box sx={{ display: 'flex', gap: 1 }}>
+                      <Button
+                        variant="outlined"
+                        component="label"
+                        startIcon={<CloudUploadIcon />}
+                        size="small"
+                      >
+                        Chọn ảnh
+                        <input
+                          type="file"
+                          hidden
+                          accept="image/*"
+                          onChange={handlePhotoSelect}
+                        />
+                      </Button>
+                      {(photoPreview || selectedPhoto) && (
+                        <Button
+                          variant="outlined"
+                          color="error"
+                          size="small"
+                          onClick={() => {
+                            setSelectedPhoto(null);
+                            setPhotoPreview(null);
+                          }}
+                        >
+                          Xóa ảnh
+                        </Button>
+                      )}
+                    </Box>
+                  </Box>
+                </Box>
+              </Grid>
+              
               <Grid item xs={12}>
                 <TextField
                   fullWidth

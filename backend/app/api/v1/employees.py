@@ -228,6 +228,107 @@ def update_employee_endpoint(
         raise HTTPException(status_code=404, detail="Employee not found")
     return updated_employee
 
+@router.post("/{employee_id}/upload-photo")
+async def upload_employee_photo(
+    employee_id: str,
+    photo: UploadFile = File(...),
+    db: Session = Depends(get_db)
+):
+    """
+    Upload photo for an existing employee
+    """
+    try:
+        # Check if employee exists
+        employee = get_employee(db, employee_id)
+        if not employee:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        
+        # Validate photo file
+        if not photo.content_type or not photo.content_type.startswith('image/'):
+            raise HTTPException(
+                status_code=400, 
+                detail="File must be an image (JPEG, PNG, etc.)"
+            )
+        
+        # Read and process photo
+        photo_content = await photo.read()
+        image = Image.open(io.BytesIO(photo_content))
+        
+        # Save photo to backend/data/employee_photos/
+        import os
+        photos_dir = os.path.join(os.path.dirname(__file__), "../../../data/employee_photos")
+        os.makedirs(photos_dir, exist_ok=True)
+        
+        # Save original photo
+        photo_filename = f"{employee_id}.jpg"
+        photo_path = os.path.join(photos_dir, photo_filename)
+        
+        # Convert to RGB if necessary and save
+        if image.mode in ('RGBA', 'LA', 'P'):
+            image = image.convert('RGB')
+        
+        image.save(photo_path, "JPEG", quality=85)
+        
+        # Update employee record with photo path
+        from sqlalchemy import update
+        db.execute(
+            update(Employee)
+            .where(Employee.employee_id == employee_id)
+            .values(photo_path=f"/api/v1/employees/{employee_id}/photo")
+        )
+        db.commit()
+        
+        return {
+            "message": "Photo uploaded successfully",
+            "employee_id": employee_id,
+            "photo_path": photo_path,
+            "photo_url": f"/api/v1/employees/{employee_id}/photo",
+            "file_size": len(photo_content)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error uploading photo for employee {employee_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error uploading photo: {str(e)}"
+        )
+
+@router.get("/{employee_id}/photo")
+async def get_employee_photo(employee_id: str, db: Session = Depends(get_db)):
+    """
+    Get employee photo
+    """
+    try:
+        # Check if employee exists
+        employee = get_employee(db, employee_id)
+        if not employee:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        
+        # Check if photo exists
+        import os
+        photos_dir = os.path.join(os.path.dirname(__file__), "../../../data/employee_photos")
+        photo_path = os.path.join(photos_dir, f"{employee_id}.jpg")
+        
+        if not os.path.exists(photo_path):
+            raise HTTPException(status_code=404, detail="Photo not found")
+        
+        return FileResponse(
+            photo_path,
+            media_type="image/jpeg",
+            filename=f"{employee_id}.jpg"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting photo for employee {employee_id}: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error getting photo: {str(e)}"
+        )
+
 @router.delete("/{employee_id}")
 def delete_employee_endpoint(employee_id: str, db: Session = Depends(get_db)):
     """Delete an employee"""

@@ -77,6 +77,15 @@ export const addEmployeeWithPhoto = (formData) => handleApiCall(() =>
   })
 );
 export const updateEmployee = (id, data) => handleApiCall(() => api.put(`/employees/${id}`, data));
+export const uploadEmployeePhoto = (employeeId, photoFile) => handleApiCall(() => {
+  const formData = new FormData();
+  formData.append('photo', photoFile);
+  return api.post(`/employees/${employeeId}/upload-photo`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  });
+});
 export const deleteEmployee = (id) => handleApiCall(() => api.delete(`/employees/${id}`));
 
 // Devices with error handling

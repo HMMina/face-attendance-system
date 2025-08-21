@@ -31,15 +31,15 @@ import {
   People as PeopleIcon,
   History as HistoryIcon,
   Devices as DevicesIcon,
-  GetApp as DownloadIcon,
-  TrendingUp as TrendingUpIcon
+  GetApp as DownloadIcon
 } from '@mui/icons-material';
 import { getEmployees, getAllAttendance } from '../services/api';
 
 export default function Reports() {
-  const [reportType, setReportType] = useState('monthly');
+  const [reportType, setReportType] = useState('thisMonth');
   const [department, setDepartment] = useState('all');
   const [reportData, setReportData] = useState([]);
+  const [departments, setDepartments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -57,10 +57,37 @@ export default function Reports() {
         const employees = employeesResult.data || [];
         const attendance = attendanceResult.data || [];
         
+        // Calculate date range based on report type
+        const now = new Date();
+        let startDate, endDate, totalWorkingDays;
+        
+        if (reportType === 'thisMonth') {
+          // This month: from 1st to last day of current month
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+          endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+          // Calculate working days (excluding weekends)
+          totalWorkingDays = getWorkingDaysInRange(startDate, endDate);
+        } else {
+          // This week: from Monday to Friday of current week
+          const dayOfWeek = now.getDay();
+          const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Handle Sunday
+          startDate = new Date(now);
+          startDate.setDate(now.getDate() + mondayOffset);
+          endDate = new Date(startDate);
+          endDate.setDate(startDate.getDate() + 4); // Friday
+          totalWorkingDays = 5; // Monday to Friday
+        }
+        
+        // Filter attendance records within date range
+        const filteredAttendance = attendance.filter(record => {
+          const recordDate = new Date(record.timestamp);
+          return recordDate >= startDate && recordDate <= endDate;
+        });
+        
         // Process data to create report
         const processedData = employees.map(employee => {
-          const employeeAttendance = attendance.filter(record => 
-            record.employee_id === employee.employee_id // Fix: use employee_id string matching
+          const employeeAttendance = filteredAttendance.filter(record => 
+            record.employee_id === employee.employee_id
           );
           
           // Group by date to count unique days
@@ -69,7 +96,7 @@ export default function Reports() {
           );
           const daysPresent = uniqueDays.size;
           
-          // Calculate late days (days with first check-in after 8:00 AM)
+          // Calculate late days (days with first check-in after 8:30 AM)
           const dailyFirstCheckin = {};
           employeeAttendance.forEach(record => {
             const date = record.timestamp.split('T')[0];
@@ -81,23 +108,43 @@ export default function Reports() {
           const daysLate = Object.values(dailyFirstCheckin).filter(timestamp => {
             const checkInTime = new Date(timestamp);
             const workStartTime = new Date(checkInTime);
-            workStartTime.setHours(8, 0, 0, 0);
+            workStartTime.setHours(8, 30, 0, 0); // 8:30 AM work start time
             return checkInTime > workStartTime;
           }).length;
           
-          const totalWorkingDays = 22; // Assume 22 working days per month
+          // Calculate early leave days (days with last check-out before 18:00)
+          const dailyLastCheckout = {};
+          employeeAttendance.forEach(record => {
+            const date = record.timestamp.split('T')[0];
+            if (!dailyLastCheckout[date] || new Date(record.timestamp) > new Date(dailyLastCheckout[date])) {
+              dailyLastCheckout[date] = record.timestamp;
+            }
+          });
+          
+          const daysEarlyLeave = Object.values(dailyLastCheckout).filter(timestamp => {
+            const checkOutTime = new Date(timestamp);
+            const workEndTime = new Date(checkOutTime);
+            workEndTime.setHours(18, 0, 0, 0); // 6:00 PM work end time
+            return checkOutTime < workEndTime;
+          }).length;
+          
           const attendanceRate = totalWorkingDays > 0 ? (daysPresent / totalWorkingDays * 100) : 0;
           
           return {
-            id: employee.employee_id, // Use employee_id for consistency
+            id: employee.employee_id,
             employee: employee.name,
             department: employee.department,
             daysPresent,
             daysLate,
+            daysEarlyLeave, // New field for early leave
             daysAbsent: Math.max(0, totalWorkingDays - daysPresent),
             attendanceRate: Math.round(attendanceRate * 10) / 10
           };
         });
+
+        // Extract unique departments from employees data
+        const uniqueDepartments = [...new Set(employees.map(emp => emp.department))].filter(dept => dept);
+        setDepartments(uniqueDepartments);
 
         setReportData(processedData);
       } else {
@@ -112,12 +159,38 @@ export default function Reports() {
     }
   };
 
+  // Helper function to calculate working days (excluding weekends)
+  const getWorkingDaysInRange = (startDate, endDate) => {
+    let count = 0;
+    const current = new Date(startDate);
+    
+    while (current <= endDate) {
+      const dayOfWeek = current.getDay();
+      if (dayOfWeek !== 0 && dayOfWeek !== 6) { // Not Sunday (0) or Saturday (6)
+        count++;
+      }
+      current.setDate(current.getDate() + 1);
+    }
+    
+    return count;
+  };
+
   useEffect(() => {
     fetchReportData();
-  }, []);
+  }, [reportType]); // Re-fetch when report type changes
 
   const handleExportReport = (format) => {
     alert(`Đang xuất báo cáo định dạng ${format}...`);
+  };
+
+  const handleReportTypeChange = (newType) => {
+    setReportType(newType);
+    // Data will be re-fetched due to useEffect dependency
+  };
+
+  const handleDepartmentChange = (newDepartment) => {
+    setDepartment(newDepartment);
+    // No need to re-fetch, just filter existing data
   };
 
   const getAttendanceColor = (rate) => {
@@ -127,13 +200,10 @@ export default function Reports() {
   };
 
   const getDepartmentColor = (department) => {
-    const colors = {
-      'IT': 'primary',
-      'HR': 'secondary',
-      'Finance': 'success',
-      'Marketing': 'warning'
-    };
-    return colors[department] || 'default';
+    // Generate color based on department name hash
+    const colors = ['primary', 'secondary', 'success', 'warning', 'error', 'info'];
+    const hash = department.split('').reduce((a, b) => a + b.charCodeAt(0), 0);
+    return colors[hash % colors.length];
   };
 
   const filteredData = department === 'all' 
@@ -145,6 +215,7 @@ export default function Reports() {
     ? (filteredData.reduce((sum, item) => sum + item.attendanceRate, 0) / filteredData.length).toFixed(1)
     : 0;
   const totalLateCount = filteredData.reduce((sum, item) => sum + item.daysLate, 0);
+  const totalEarlyLeaveCount = filteredData.reduce((sum, item) => sum + item.daysEarlyLeave, 0);
   const totalAbsentCount = filteredData.reduce((sum, item) => sum + item.daysAbsent, 0);
 
   return (
@@ -184,11 +255,10 @@ export default function Reports() {
                 <Select
                   value={reportType}
                   label="Loại báo cáo"
-                  onChange={(e) => setReportType(e.target.value)}
+                  onChange={(e) => handleReportTypeChange(e.target.value)}
                 >
-                  <MenuItem value="daily">Hàng ngày</MenuItem>
-                  <MenuItem value="weekly">Hàng tuần</MenuItem>
-                  <MenuItem value="monthly">Hàng tháng</MenuItem>
+                  <MenuItem value="thisMonth">Tháng này</MenuItem>
+                  <MenuItem value="thisWeek">Tuần này</MenuItem>
                 </Select>
               </FormControl>
             </Grid>
@@ -199,13 +269,12 @@ export default function Reports() {
                 <Select
                   value={department}
                   label="Phòng ban"
-                  onChange={(e) => setDepartment(e.target.value)}
+                  onChange={(e) => handleDepartmentChange(e.target.value)}
                 >
                   <MenuItem value="all">Tất cả</MenuItem>
-                  <MenuItem value="IT">IT</MenuItem>
-                  <MenuItem value="HR">HR</MenuItem>
-                  <MenuItem value="Finance">Finance</MenuItem>
-                  <MenuItem value="Marketing">Marketing</MenuItem>
+                  {departments.map((dept) => (
+                    <MenuItem key={dept} value={dept}>{dept}</MenuItem>
+                  ))}
                 </Select>
               </FormControl>
             </Grid>
@@ -272,7 +341,7 @@ export default function Reports() {
             <Card>
               <CardContent>
                 <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                  <TrendingUpIcon color="success" sx={{ mr: 1 }} />
+                  <ReportsIcon color="success" sx={{ mr: 1 }} />
                   <Box>
                     <Typography color="textSecondary" gutterBottom>
                       Tỷ lệ chấm công TB
@@ -303,6 +372,24 @@ export default function Reports() {
             <Card>
               <CardContent>
                 <Typography color="textSecondary" gutterBottom>
+                  Tổng số về sớm
+                </Typography>
+                <Typography variant="h5" color="info.main">
+                  {totalEarlyLeaveCount}
+                </Typography>
+              </CardContent>
+            </Card>
+          </Grid>
+        </Grid>
+        )}
+
+        {/* Additional Summary Card for Absent */}
+        {!loading && (
+        <Grid container spacing={3} sx={{ mb: 3 }}>
+          <Grid item xs={12} sm={6} md={3}>
+            <Card>
+              <CardContent>
+                <Typography color="textSecondary" gutterBottom>
                   Tổng số ngày vắng
                 </Typography>
                 <Typography variant="h5" color="error.main">
@@ -319,7 +406,7 @@ export default function Reports() {
         <Paper>
           <Box sx={{ p: 2, borderBottom: 1, borderColor: 'divider' }}>
             <Typography variant="h6">
-              Chi tiết báo cáo chấm công - {reportType === 'daily' ? 'Hàng ngày' : reportType === 'weekly' ? 'Hàng tuần' : 'Hàng tháng'}
+              Chi tiết báo cáo chấm công - {reportType === 'thisMonth' ? 'Tháng này' : 'Tuần này'}
             </Typography>
           </Box>
           <TableContainer>
@@ -330,6 +417,7 @@ export default function Reports() {
                   <TableCell>Phòng ban</TableCell>
                   <TableCell>Ngày có mặt</TableCell>
                   <TableCell>Ngày muộn</TableCell>
+                  <TableCell>Ngày về sớm</TableCell>
                   <TableCell>Ngày vắng</TableCell>
                   <TableCell>Tỷ lệ (%)</TableCell>
                 </TableRow>
@@ -347,6 +435,7 @@ export default function Reports() {
                     </TableCell>
                     <TableCell>{row.daysPresent}</TableCell>
                     <TableCell>{row.daysLate}</TableCell>
+                    <TableCell>{row.daysEarlyLeave}</TableCell>
                     <TableCell>{row.daysAbsent}</TableCell>
                     <TableCell>
                       <Chip
@@ -360,30 +449,6 @@ export default function Reports() {
               </TableBody>
             </Table>
           </TableContainer>
-        </Paper>
-        )}
-
-        {/* Chart Placeholder */}
-        {!loading && (
-        <Paper sx={{ mt: 3, p: 3 }}>
-          <Typography variant="h6" gutterBottom>
-            Biểu đồ xu hướng chấm công
-          </Typography>
-          <Box sx={{ 
-            height: 200, 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center', 
-            bgcolor: 'grey.50',
-            border: '2px dashed',
-            borderColor: 'grey.300',
-            borderRadius: 1
-          }}>
-            <Typography color="textSecondary" align="center">
-              Biểu đồ sẽ được hiển thị ở đây<br />
-              (Cần tích hợp thư viện Chart.js hoặc Recharts)
-            </Typography>
-          </Box>
         </Paper>
         )}
       </Container>
