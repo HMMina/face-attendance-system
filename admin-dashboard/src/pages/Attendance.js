@@ -367,7 +367,8 @@ export default function Attendance() {
             <Grid item xs={12} sm={6} md={3}>
               <TextField
                 fullWidth
-                label="Tìm kiếm nhân viên"
+                label="Tìm kiếm theo tên hoặc mã NV"
+                placeholder="Nhập tên hoặc mã nhân viên..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 InputProps={{
@@ -397,16 +398,16 @@ export default function Attendance() {
             </Grid>
             <Grid item xs={12} sm={6} md={2}>
               <FormControl fullWidth>
-                <InputLabel>Nhân viên</InputLabel>
+                <InputLabel>Mã nhân viên</InputLabel>
                 <Select
                   value={selectedEmployee}
-                  label="Nhân viên"
+                  label="Mã nhân viên"
                   onChange={(e) => setSelectedEmployee(e.target.value)}
                 >
                   <MenuItem value="">Tất cả</MenuItem>
                   {employees.map((employee) => (
                     <MenuItem key={employee.employee_id} value={employee.employee_id}>
-                      {employee.name}
+                      {employee.employee_id} - {employee.name}
                     </MenuItem>
                   ))}
                 </Select>
@@ -474,6 +475,7 @@ export default function Attendance() {
                 <TableHead>
                   <TableRow>
                     <TableCell>STT</TableCell>
+                    <TableCell>Mã NV</TableCell>
                     <TableCell>Tên nhân viên</TableCell>
                     <TableCell>Ngày</TableCell>
                     <TableCell>Giờ vào</TableCell>
@@ -485,9 +487,10 @@ export default function Attendance() {
                 <TableBody>
                   {attendanceData
                     .filter(item => {
-                      // Search term filter
+                      // Search term filter - tìm theo tên hoặc mã nhân viên
                       const matchesSearch = searchTerm === '' || 
-                        item.employeeName.toLowerCase().includes(searchTerm.toLowerCase());
+                        item.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                        item.employeeId.toLowerCase().includes(searchTerm.toLowerCase());
                       
                       // Employee filter
                       const matchesEmployee = selectedEmployee === '' || 
@@ -503,6 +506,7 @@ export default function Attendance() {
                     .map((row, index) => (
                     <TableRow key={row.id}>
                       <TableCell>{index + 1}</TableCell>
+                      <TableCell>{row.employeeId}</TableCell>
                       <TableCell>{row.employeeName}</TableCell>
                       <TableCell>{row.date}</TableCell>
                       <TableCell>{row.checkIn}</TableCell>

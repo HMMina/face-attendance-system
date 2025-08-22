@@ -49,7 +49,7 @@ import {
   PhotoCamera as PhotoCameraIcon,
   CloudUpload as CloudUploadIcon
 } from '@mui/icons-material';
-import { getEmployees, getDepartments, addEmployee, addEmployeeWithPhoto, updateEmployee, uploadEmployeePhoto, deleteEmployee } from '../services/api';
+import { getEmployees, getDepartments, addEmployee, addEmployeeWithPhoto, updateEmployee, uploadEmployeePhoto, deleteEmployee, api } from '../services/api';
 
 export default function Employees() {
   const [employees, setEmployees] = useState([]);
@@ -71,9 +71,15 @@ export default function Employees() {
   const [customDepartment, setCustomDepartment] = useState('');
   
   // Photo upload states
-  const [selectedPhoto, setSelectedPhoto] = useState(null);
-  const [photoPreview, setPhotoPreview] = useState(null);
+  const [selectedPhotos, setSelectedPhotos] = useState([]); // Array of photos
+  const [selectedAvatarIndex, setSelectedAvatarIndex] = useState(0); // Index of selected avatar
   const [photoUploading, setPhotoUploading] = useState(false);
+  const [imageRefreshKey, setImageRefreshKey] = useState(0); // Key để force refresh ảnh
+  
+  // Search and filter states
+  const [searchText, setSearchText] = useState('');
+  const [filterDepartment, setFilterDepartment] = useState('');
+  const [filteredEmployees, setFilteredEmployees] = useState([]);
 
   const savePhotoToBackend = async (file, employeeId) => {
     try {
@@ -101,11 +107,12 @@ export default function Employees() {
   const getEmployeePhotoUrl = (employee) => {
     // First check if employee has photo_path from backend
     if (employee.photo_path) {
-      return `http://localhost:8000${employee.photo_path}`;
+      // Thêm timestamp và refresh key để tránh cache ảnh cũ
+      return `http://localhost:8000${employee.photo_path}?v=${imageRefreshKey}&t=${Date.now()}`;
     }
     
-    // Fallback: try backend API endpoint
-    return `http://localhost:8000/api/v1/employees/${employee.employee_id}/photo`;
+    // Fallback: try backend API endpoint với timestamp và refresh key
+    return `http://localhost:8000/api/v1/employees/${employee.employee_id}/photo?v=${imageRefreshKey}&t=${Date.now()}`;
   };
 
   const fetchEmployees = async () => {
@@ -146,11 +153,19 @@ export default function Employees() {
   const fetchDepartments = async () => {
     try {
       const result = await getDepartments();
-      if (result.success && Array.isArray(result.data)) {
-        setDepartments(result.data);
+      console.log('Departments API result:', result); // Debug log
+      
+      if (result.success && result.data) {
+        // API trả về {departments: ["Marketing", "Kế toán", ...]}
+        const deptArray = result.data.departments || result.data;
+        if (Array.isArray(deptArray)) {
+          setDepartments(deptArray);
+          console.log('Departments loaded:', deptArray);
+        } else {
+          throw new Error('Invalid departments data format');
+        }
       } else {
-        // Fallback departments if API fails
-        setDepartments(['IT Department', 'HR Department', 'Finance Department', 'Marketing Department']);
+        throw new Error(result.error || 'Failed to fetch departments');
       }
     } catch (err) {
       console.error('Error fetching departments:', err);
@@ -164,7 +179,29 @@ export default function Employees() {
     fetchDepartments();
   }, []);
 
+  // Filter employees based on search and department
+  useEffect(() => {
+    let filtered = employees;
+    
+    // Filter by search text (name or employee_id)
+    if (searchText.trim()) {
+      filtered = filtered.filter(emp => 
+        emp.name.toLowerCase().includes(searchText.toLowerCase()) ||
+        emp.employee_id.toLowerCase().includes(searchText.toLowerCase())
+      );
+    }
+    
+    // Filter by department
+    if (filterDepartment) {
+      filtered = filtered.filter(emp => emp.department === filterDepartment);
+    }
+    
+    setFilteredEmployees(filtered);
+  }, [employees, searchText, filterDepartment]);
+
   const handleOpenDialog = (employee = null) => {
+    console.log('Opening dialog, current departments:', departments); // Debug log
+    
     if (employee) {
       setEditingEmployee(employee);
       const isCustomDept = !departments.includes(employee.department);
@@ -205,45 +242,94 @@ export default function Employees() {
     });
     setCustomDepartment('');
     // Reset photo states
-    setSelectedPhoto(null);
-    setPhotoPreview(null);
+    setSelectedPhotos([]);
+    setSelectedAvatarIndex(0);
     setPhotoUploading(false);
   };
 
   // Photo handling functions
   const handlePhotoSelect = (event) => {
-    const file = event.target.files[0];
-    if (file) {
+    const files = Array.from(event.target.files);
+    
+    if (files.length > 3) {
+      setError('Chỉ được chọn tối đa 3 ảnh');
+      return;
+    }
+    
+    const validFiles = files.filter(file => {
       // Validate file type
       if (!file.type.startsWith('image/')) {
-        setError('Vui lòng chọn file ảnh (JPG, PNG, GIF...)');
-        return;
+        setError(`File ${file.name} không phải là ảnh`);
+        return false;
       }
       
       // Validate file size (5MB max)
       if (file.size > 5 * 1024 * 1024) {
-        setError('Kích thước ảnh không được vượt quá 5MB');
-        return;
+        setError(`File ${file.name} quá lớn (tối đa 5MB)`);
+        return false;
       }
       
-      setSelectedPhoto(file);
-      
-      // Create preview
-      const reader = new FileReader();
-      reader.onload = (e) => {
-        setPhotoPreview(e.target.result);
-      };
-      reader.readAsDataURL(file);
+      return true;
+    });
+    
+    if (validFiles.length === 0) return;
+    
+    // Create preview URLs for selected photos
+    const photoData = validFiles.map(file => ({
+      file: file,
+      preview: URL.createObjectURL(file),
+      name: file.name
+    }));
+    
+    setSelectedPhotos(photoData);
+    setSelectedAvatarIndex(0); // Default to first photo as avatar
+  };
+
+  const removePhoto = (index) => {
+    const newPhotos = selectedPhotos.filter((_, i) => i !== index);
+    setSelectedPhotos(newPhotos);
+    
+    // Adjust avatar index if needed
+    if (selectedAvatarIndex >= newPhotos.length) {
+      setSelectedAvatarIndex(Math.max(0, newPhotos.length - 1));
+    }
+    
+    // Reset file input if no photos left
+    if (newPhotos.length === 0) {
+      const fileInput = document.getElementById('photo-upload-input');
+      if (fileInput) {
+        fileInput.value = '';
+      }
     }
   };
 
-  const removePhoto = () => {
-    setSelectedPhoto(null);
-    setPhotoPreview(null);
-    // Reset file input
-    const fileInput = document.getElementById('photo-upload-input');
-    if (fileInput) {
-      fileInput.value = '';
+  const selectAvatar = (index) => {
+    setSelectedAvatarIndex(index);
+  };
+
+  const handleDeleteCurrentAvatar = async () => {
+    if (!editingEmployee) return;
+    
+    if (window.confirm('Bạn có chắc chắn muốn xóa ảnh hiện tại của nhân viên này?')) {
+      try {
+        setPhotoUploading(true);
+        
+        // Call API to delete current photo
+        const result = await api.delete(`/employees/${editingEmployee.employee_id}/photo`);
+        
+        if (result.status === 200) {
+          setSuccess('Xóa ảnh thành công!');
+          setImageRefreshKey(prev => prev + 1);
+          await fetchEmployees();
+        } else {
+          throw new Error('Failed to delete photo');
+        }
+      } catch (error) {
+        console.error('Delete photo error:', error);
+        setError('Không thể xóa ảnh. Vui lòng thử lại.');
+      } finally {
+        setPhotoUploading(false);
+      }
     }
   };
 
@@ -282,9 +368,18 @@ export default function Employees() {
         result = await updateEmployee(editingEmployee.employee_id, finalFormData);
         
         // Upload photo to backend if selected
-        if (selectedPhoto && result.success) {
+        if (selectedPhotos.length > 0 && result.success) {
           try {
-            await savePhotoToBackend(selectedPhoto, editingEmployee.employee_id);
+            // Upload the selected avatar photo
+            const avatarPhoto = selectedPhotos[selectedAvatarIndex];
+            await savePhotoToBackend(avatarPhoto.file, editingEmployee.employee_id);
+            
+            // Force refresh ảnh bằng cách tăng refresh key
+            setImageRefreshKey(prev => prev + 1);
+            
+            // Refresh employee list để cập nhật ảnh mới
+            await fetchEmployees();
+            console.log('✅ Photo updated and employee list refreshed');
           } catch (photoError) {
             console.warn('Failed to upload photo to backend:', photoError);
             setError('Cập nhật thông tin thành công nhưng upload ảnh thất bại');
@@ -292,7 +387,7 @@ export default function Employees() {
         }
       } else {
         // Add new employee
-        if (selectedPhoto) {
+        if (selectedPhotos.length > 0) {
           // Use addEmployeeWithPhoto API that handles both employee creation and photo upload
           const formDataWithPhoto = new FormData();
           formDataWithPhoto.append('name', finalFormData.name);
@@ -301,7 +396,10 @@ export default function Employees() {
           formDataWithPhoto.append('department', finalFormData.department || '');
           formDataWithPhoto.append('position', finalFormData.position || '');
           formDataWithPhoto.append('phone', finalFormData.phone || '');
-          formDataWithPhoto.append('photo', selectedPhoto);
+          
+          // Upload the selected avatar photo
+          const avatarPhoto = selectedPhotos[selectedAvatarIndex];
+          formDataWithPhoto.append('photo', avatarPhoto.file);
           
           setPhotoUploading(true);
           result = await addEmployeeWithPhoto(formDataWithPhoto);
@@ -314,8 +412,16 @@ export default function Employees() {
       
       if (result.success) {
         setSuccess(editingEmployee ? 'Cập nhật thành công!' : 'Thêm nhân viên thành công!');
+        
+        // Force refresh ảnh nếu có upload ảnh
+        if (selectedPhotos.length > 0) {
+          setImageRefreshKey(prev => prev + 1);
+        }
+        
         handleCloseDialog();
-        fetchEmployees(); // Refresh list
+        
+        // Luôn refresh danh sách để cập nhật ảnh mới
+        await fetchEmployees();
       } else {
         throw new Error(result.error || 'Operation failed');
       }
@@ -368,13 +474,29 @@ export default function Employees() {
   };
 
   const getDepartmentColor = (department) => {
-    const colors = {
-      'IT': 'primary',
-      'HR': 'secondary',
-      'Finance': 'success',
-      'Marketing': 'warning'
-    };
-    return colors[department] || 'default';
+    if (!department) return 'default';
+    
+    // Tạo hash từ tên phòng ban để đảm bảo màu khác nhau cho mỗi phòng
+    let hash = 0;
+    for (let i = 0; i < department.length; i++) {
+      const char = department.charCodeAt(i);
+      hash = ((hash << 5) - hash) + char;
+      hash = hash & hash; // Convert to 32-bit integer
+    }
+    
+    // Bảng màu dễ nhìn, dễ phân biệt
+    const colors = [
+      'primary',    // Xanh dương
+      'secondary',  // Tím
+      'success',    // Xanh lá
+      'warning',    // Cam
+      'error',      // Đỏ
+      'info'        // Xanh nhạt
+    ];
+    
+    // Sử dụng hash để chọn màu, đảm bảo cùng tên luôn có cùng màu
+    const colorIndex = Math.abs(hash) % colors.length;
+    return colors[colorIndex];
   };
 
   return (
@@ -401,7 +523,7 @@ export default function Employees() {
         </Toolbar>
       </AppBar>
 
-      <Container maxWidth="lg" sx={{ mt: 4, mb: 4 }}>
+      <Container maxWidth="xl" sx={{ mt: 4, mb: 4 }}> {/* Tăng từ lg lên xl để rộng hơn */}
         {/* Error/Success Messages */}
         <Snackbar
           open={!!error}
@@ -470,12 +592,17 @@ export default function Employees() {
           <Grid item xs={12} sm={6} md={3}>
             <Card>
               <CardContent>
-                <Typography color="textSecondary" gutterBottom>
-                  Phòng ban IT
-                </Typography>
-                <Typography variant="h5">
-                  {employees.filter(emp => emp.department === 'IT').length}
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <WorkIcon color="info" sx={{ mr: 1 }} />
+                  <Box>
+                    <Typography color="textSecondary" gutterBottom>
+                      Tổng phòng ban
+                    </Typography>
+                    <Typography variant="h5">
+                      {departments.length}
+                    </Typography>
+                  </Box>
+                </Box>
               </CardContent>
             </Card>
           </Grid>
@@ -483,12 +610,17 @@ export default function Employees() {
           <Grid item xs={12} sm={6} md={3}>
             <Card>
               <CardContent>
-                <Typography color="textSecondary" gutterBottom>
-                  Phòng ban khác
-                </Typography>
-                <Typography variant="h5">
-                  {employees.filter(emp => emp.department !== 'IT').length}
-                </Typography>
+                <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                  <PersonIcon color="warning" sx={{ mr: 1 }} />
+                  <Box>
+                    <Typography color="textSecondary" gutterBottom>
+                      Không hoạt động
+                    </Typography>
+                    <Typography variant="h5">
+                      {employees.filter(emp => !emp.is_active).length}
+                    </Typography>
+                  </Box>
+                </Box>
               </CardContent>
             </Card>
           </Grid>
@@ -509,60 +641,168 @@ export default function Employees() {
           </Button>
         </Box>
 
+        {/* Search and Filter Section */}
+        <Paper sx={{ p: 2, mb: 3 }}>
+          <Grid container spacing={2} alignItems="center">
+            <Grid item xs={12} sm={6} md={4}>
+              <TextField
+                fullWidth
+                label="Tìm kiếm theo tên hoặc mã NV"
+                value={searchText}
+                onChange={(e) => setSearchText(e.target.value)}
+                placeholder="Nhập tên hoặc mã nhân viên..."
+                size="small"
+              />
+            </Grid>
+            <Grid item xs={12} sm={6} md={3}>
+              <FormControl fullWidth size="small">
+                <InputLabel>Lọc theo phòng ban</InputLabel>
+                <Select
+                  value={filterDepartment}
+                  label="Lọc theo phòng ban"
+                  onChange={(e) => setFilterDepartment(e.target.value)}
+                >
+                  <MenuItem value="">Tất cả phòng ban</MenuItem>
+                  {departments.map((dept, index) => (
+                    <MenuItem key={index} value={dept}>
+                      {dept}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Grid>
+            <Grid item xs={12} sm={12} md={5}>
+              <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+                <Typography variant="body2" color="text.secondary">
+                  Hiển thị: {filteredEmployees.length} / {employees.length} nhân viên
+                </Typography>
+                {(searchText || filterDepartment) && (
+                  <Button
+                    size="small"
+                    onClick={() => {
+                      setSearchText('');
+                      setFilterDepartment('');
+                    }}
+                  >
+                    Xóa bộ lọc
+                  </Button>
+                )}
+              </Box>
+            </Grid>
+          </Grid>
+        </Paper>
+
         {/* Employees Table */}
-        <Paper>
-          <TableContainer>
-            <Table>
+        <Paper sx={{ width: '100%', overflow: 'auto' }}>
+          <TableContainer sx={{ maxHeight: '75vh' }}> {/* Bỏ minWidth để table tự động fit */}
+            <Table stickyHeader size="small"> {/* Thêm size="small" để compact hơn */}
               <TableHead>
                 <TableRow>
-                  <TableCell>Ảnh</TableCell>
-                  <TableCell>Mã NV</TableCell>
-                  <TableCell>Họ tên</TableCell>
-                  <TableCell>Email</TableCell>
-                  <TableCell>Phòng ban</TableCell>
-                  <TableCell>Chức vụ</TableCell>
-                  <TableCell>Điện thoại</TableCell>
-                  <TableCell>Trạng thái</TableCell>
-                  <TableCell>Thao tác</TableCell>
+                  <TableCell sx={{ width: '120px', textAlign: 'center' }}>Ảnh</TableCell>
+                  <TableCell sx={{ width: '120px', textAlign: 'center' }}>Mã NV</TableCell>
+                  <TableCell sx={{ width: '200px', textAlign: 'center' }}>Họ tên</TableCell>
+                  <TableCell sx={{ width: '150px', textAlign: 'center' }}>Phòng ban</TableCell>
+                  <TableCell sx={{ width: '180px', textAlign: 'center' }}>Chức vụ</TableCell>
+                  <TableCell sx={{ width: '130px', textAlign: 'center' }}>Điện thoại</TableCell>
+                  <TableCell sx={{ width: '220px', textAlign: 'center' }}>Email</TableCell>
+                  <TableCell sx={{ width: '100px', textAlign: 'center' }}>Trạng thái</TableCell>
+                  <TableCell sx={{ width: '100px', textAlign: 'center' }}>Thao tác</TableCell>
                 </TableRow>
               </TableHead>
               <TableBody>
-                {employees.map((employee) => (
+                {filteredEmployees.map((employee) => (
                   <TableRow key={employee.id}>
-                    <TableCell>
+                    {/* Ảnh */}
+                    <TableCell sx={{ textAlign: 'center' }}>
                       <Avatar
                         src={getEmployeePhotoUrl(employee)}
                         alt={employee.name}
-                        sx={{ width: 75, height: 75 }}
+                        sx={{ width: 100, height: 100, margin: '0 auto' }}
                       >
                         <PersonIcon />
                       </Avatar>
                     </TableCell>
-                    <TableCell>{employee.employee_id}</TableCell>
+                    {/* Mã NV */}
+                    <TableCell sx={{ textAlign: 'center' }}>
+                      <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+                        {employee.employee_id}
+                      </Typography>
+                    </TableCell>
+                    {/* Họ tên */}
                     <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <PersonIcon sx={{ mr: 1, color: 'text.secondary' }} />
-                        {employee.name}
+                      <Box sx={{ 
+                        display: 'flex', 
+                        alignItems: 'center',
+                        overflow: 'hidden'
+                      }}>
+                        <PersonIcon sx={{ mr: 1, color: 'text.secondary', flexShrink: 0 }} />
+                        <Typography 
+                          variant="body2" 
+                          title={employee.name}
+                          sx={{ 
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            whiteSpace: 'nowrap'
+                          }}
+                        >
+                          {employee.name}
+                        </Typography>
                       </Box>
                     </TableCell>
-                    <TableCell>{employee.email}</TableCell>
-                    <TableCell>
+                    {/* Phòng ban */}
+                    <TableCell sx={{ textAlign: 'center' }}>
                       <Chip
                         label={employee.department}
                         color={getDepartmentColor(employee.department)}
                         size="small"
                       />
                     </TableCell>
-                    <TableCell>{employee.position}</TableCell>
-                    <TableCell>{employee.phone}</TableCell>
+                    {/* Chức vụ */}
                     <TableCell>
+                      <Typography 
+                        variant="body2" 
+                        sx={{ 
+                          fontSize: '0.875rem',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap'
+                        }}
+                        title={employee.position}
+                      >
+                        {employee.position}
+                      </Typography>
+                    </TableCell>
+                    {/* Điện thoại */}
+                    <TableCell sx={{ textAlign: 'center' }}>
+                      <Typography variant="body2" sx={{ fontSize: '0.875rem' }}>
+                        {employee.phone}
+                      </Typography>
+                    </TableCell>
+                    {/* Email */}
+                    <TableCell>
+                      <Typography 
+                        variant="body2" 
+                        sx={{ 
+                          fontSize: '0.875rem',
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap'
+                        }}
+                        title={employee.email}
+                      >
+                        {employee.email}
+                      </Typography>
+                    </TableCell>
+                    {/* Trạng thái */}
+                    <TableCell sx={{ textAlign: 'center' }}>
                       <Chip
                         label={getStatusText(employee.is_active)}
                         color={getStatusColor(employee.is_active)}
                         size="small"
                       />
                     </TableCell>
-                    <TableCell>
+                    {/* Thao tác */}
+                    <TableCell sx={{ textAlign: 'center' }}>
                       <IconButton
                         color="primary"
                         onClick={() => handleOpenDialog(employee)}
@@ -596,45 +836,123 @@ export default function Employees() {
               <Grid item xs={12}>
                 <Box sx={{ textAlign: 'center', mb: 2 }}>
                   <Typography variant="subtitle2" gutterBottom>
-                    Ảnh nhân viên
+                    Ảnh nhân viên (Tối đa 3 ảnh)
                   </Typography>
+                  
+                  {/* Selected Avatar Preview */}
                   <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
                     <Avatar
-                      src={photoPreview || (editingEmployee ? getEmployeePhotoUrl(editingEmployee) : null)}
-                      sx={{ width: 150, height: 150, bgcolor: 'grey.300' }}
+                      src={selectedPhotos.length > 0 ? selectedPhotos[selectedAvatarIndex]?.preview : 
+                           (editingEmployee ? getEmployeePhotoUrl(editingEmployee) : null)}
+                      sx={{ width: 150, height: 150, bgcolor: 'grey.300', border: '3px solid #2196f3' }}
                     >
                       <PhotoCameraIcon sx={{ fontSize: 60 }} />
                     </Avatar>
-                    
-                    <Box sx={{ display: 'flex', gap: 1 }}>
+                    <Typography variant="caption" color="primary">
+                      Avatar hiển thị
+                    </Typography>
+                  </Box>
+                  
+                  {/* Photo Selection Grid */}
+                  {selectedPhotos.length > 0 && (
+                    <Box sx={{ mt: 2, mb: 2 }}>
+                      <Typography variant="subtitle2" gutterBottom>
+                        Chọn ảnh làm avatar:
+                      </Typography>
+                      <Grid container spacing={1} justifyContent="center">
+                        {selectedPhotos.map((photo, index) => (
+                          <Grid item key={index}>
+                            <Box sx={{ position: 'relative' }}>
+                              <Avatar
+                                src={photo.preview}
+                                sx={{ 
+                                  width: 80, 
+                                  height: 80, 
+                                  cursor: 'pointer',
+                                  border: selectedAvatarIndex === index ? '3px solid #2196f3' : '2px solid #ddd',
+                                  opacity: selectedAvatarIndex === index ? 1 : 0.7
+                                }}
+                                onClick={() => selectAvatar(index)}
+                              />
+                              {selectedAvatarIndex === index && (
+                                <Box sx={{
+                                  position: 'absolute',
+                                  top: -5,
+                                  right: -5,
+                                  bgcolor: 'primary.main',
+                                  color: 'white',
+                                  borderRadius: '50%',
+                                  width: 20,
+                                  height: 20,
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  fontSize: 12
+                                }}>
+                                  ✓
+                                </Box>
+                              )}
+                              <IconButton
+                                size="small"
+                                onClick={() => removePhoto(index)}
+                                sx={{ 
+                                  position: 'absolute',
+                                  top: -10,
+                                  left: -10,
+                                  backgroundColor: 'error.main',
+                                  color: 'white',
+                                  '&:hover': { backgroundColor: 'error.dark' },
+                                  width: 20,
+                                  height: 20
+                                }}
+                              >
+                                ×
+                              </IconButton>
+                            </Box>
+                          </Grid>
+                        ))}
+                      </Grid>
+                    </Box>
+                  )}
+                  
+                  <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                    <Button
+                      variant="outlined"
+                      component="label"
+                      startIcon={<CloudUploadIcon />}
+                      size="small"
+                      disabled={selectedPhotos.length >= 3}
+                    >
+                      {selectedPhotos.length === 0 ? 'Chọn ảnh' : `Thêm ảnh (${selectedPhotos.length}/3)`}
+                      <input
+                        type="file"
+                        hidden
+                        accept="image/*"
+                        multiple
+                        max="3"
+                        onChange={handlePhotoSelect}
+                      />
+                    </Button>
+                    {selectedPhotos.length > 0 && (
                       <Button
                         variant="outlined"
-                        component="label"
-                        startIcon={<CloudUploadIcon />}
+                        color="error"
                         size="small"
+                        onClick={() => setSelectedPhotos([])}
                       >
-                        Chọn ảnh
-                        <input
-                          type="file"
-                          hidden
-                          accept="image/*"
-                          onChange={handlePhotoSelect}
-                        />
+                        Xóa tất cả
                       </Button>
-                      {(photoPreview || selectedPhoto) && (
-                        <Button
-                          variant="outlined"
-                          color="error"
-                          size="small"
-                          onClick={() => {
-                            setSelectedPhoto(null);
-                            setPhotoPreview(null);
-                          }}
-                        >
-                          Xóa ảnh
-                        </Button>
-                      )}
-                    </Box>
+                    )}
+                    {editingEmployee && (
+                      <Button
+                        variant="outlined"
+                        color="warning"
+                        size="small"
+                        onClick={handleDeleteCurrentAvatar}
+                      >
+                        Xóa ảnh hiện tại
+                      </Button>
+                    )}
                   </Box>
                 </Box>
               </Grid>
@@ -726,87 +1044,6 @@ export default function Employees() {
                   onChange={handleInputChange}
                   helperText="Số điện thoại liên hệ"
                 />
-              </Grid>
-              
-              {/* Photo Upload Section */}
-              <Grid item xs={12}>
-                <Card variant="outlined" sx={{ mt: 2 }}>
-                  <CardContent>
-                    <Box display="flex" alignItems="center" gap={1} mb={2}>
-                      <PhotoCameraIcon color="primary" />
-                      <Typography variant="h6">Upload ảnh thẻ nhân viên</Typography>
-                    </Box>
-                    
-                    <Grid container spacing={2} alignItems="center">
-                      <Grid item xs={12} sm={6}>
-                        <input
-                          accept="image/*"
-                          style={{ display: 'none' }}
-                          id="photo-upload-input"
-                          type="file"
-                          onChange={handlePhotoSelect}
-                        />
-                        <label htmlFor="photo-upload-input">
-                          <Button
-                            variant="outlined"
-                            component="span"
-                            startIcon={<CloudUploadIcon />}
-                            fullWidth
-                            disabled={photoUploading}
-                          >
-                            Chọn ảnh thẻ
-                          </Button>
-                        </label>
-                        <Typography variant="caption" display="block" sx={{ mt: 1, color: 'text.secondary' }}>
-                          Định dạng JPG, PNG. Tối đa 5MB
-                        </Typography>
-                      </Grid>
-                      
-                      {photoPreview && (
-                        <Grid item xs={12} sm={6}>
-                          <Box textAlign="center">
-                            <Badge
-                              overlap="circular"
-                              anchorOrigin={{ vertical: 'top', horizontal: 'right' }}
-                              badgeContent={
-                                <IconButton
-                                  size="small"
-                                  onClick={removePhoto}
-                                  sx={{ 
-                                    backgroundColor: 'error.main',
-                                    color: 'white',
-                                    '&:hover': { backgroundColor: 'error.dark' },
-                                    width: 20,
-                                    height: 20
-                                  }}
-                                >
-                                  ×
-                                </IconButton>
-                              }
-                            >
-                              <Avatar
-                                src={photoPreview}
-                                sx={{ width: 120, height: 120, border: '2px solid #ddd' }}
-                              />
-                            </Badge>
-                            <Typography variant="caption" display="block" sx={{ mt: 1 }}>
-                              {selectedPhoto?.name}
-                            </Typography>
-                          </Box>
-                        </Grid>
-                      )}
-                      
-                      {photoUploading && (
-                        <Grid item xs={12}>
-                          <Box display="flex" alignItems="center" gap={2}>
-                            <CircularProgress size={20} />
-                            <Typography variant="body2">Đang xử lý ảnh...</Typography>
-                          </Box>
-                        </Grid>
-                      )}
-                    </Grid>
-                  </CardContent>
-                </Card>
               </Grid>
             </Grid>
           </DialogContent>

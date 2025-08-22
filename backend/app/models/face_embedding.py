@@ -61,8 +61,8 @@ class FaceEmbedding(Base):
     extraction_confidence = Column(Float, nullable=True)  # AI model confidence during extraction
     face_bbox = Column(JSON, nullable=True)  # Bounding box info {"x1": 100, "y1": 120, "x2": 200, "y2": 220}
     
-    # Relationships
-    employee = relationship("Employee", back_populates="face_embeddings")
+    # Relationships - DISABLED to avoid conflicts with face_templates
+    # employee = relationship("Employee", back_populates="face_embeddings")
     
     def __repr__(self):
         return f"<FaceEmbedding(id={self.id}, employee_id={self.employee_id}, active={self.is_active})>"

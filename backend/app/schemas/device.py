@@ -9,6 +9,7 @@ class DeviceBase(BaseModel):
     device_id: Optional[str] = None  # Auto-generated if not provided
     name: Optional[str] = None
     ip_address: Optional[str] = None
+    is_active: Optional[bool] = None
 
 class DeviceCreate(DeviceBase):
     pass

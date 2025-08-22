@@ -17,5 +17,5 @@ class Employee(Base):
     position = Column(String)
     created_at = Column(DateTime, default=datetime.datetime.utcnow)
     
-    # Relationship với face embeddings
-    face_embeddings = relationship("FaceEmbedding", back_populates="employee", cascade="all, delete-orphan")
+    # Relationship với face templates
+    face_templates = relationship("FaceTemplate", back_populates="employee", cascade="all, delete-orphan")

@@ -46,8 +46,20 @@ def update_device(db: Session, device_id: int, device_data: DeviceCreate):
     db_device = get_device_by_id(db, device_id)
     if not db_device:
         return None
-    db_device.name = device_data.name
-    db_device.ip_address = device_data.ip_address
+    
+    # Update all fields that can be modified
+    if device_data.name is not None:
+        db_device.name = device_data.name
+    if device_data.ip_address is not None:
+        db_device.ip_address = device_data.ip_address
+    if device_data.device_id is not None:
+        db_device.device_id = device_data.device_id
+    if device_data.is_active is not None:
+        db_device.is_active = device_data.is_active
+    
+    # Update last_seen to current time
+    db_device.last_seen = datetime.datetime.utcnow()
+    
     db.commit()
     db.refresh(db_device)
     return db_device

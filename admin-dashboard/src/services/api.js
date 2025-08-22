@@ -99,11 +99,3 @@ export const getDeviceStatus = (id) => handleApiCall(() => api.get(`/devices/${i
 export const getAttendanceHistory = (deviceId) => handleApiCall(() => api.get(`/attendance/history/${deviceId}`));
 export const getEmployeeAttendance = (employeeId) => handleApiCall(() => api.get(`/attendance/employee/${employeeId}`));
 export const getAllAttendance = () => handleApiCall(() => api.get('/attendance'));
-
-// Network with error handling
-export const getNetworkStatus = () => handleApiCall(() => api.get('/network/status'));
-export const getNetworkLogs = () => handleApiCall(() => api.get('/network'));
-export const getDeviceNetworkLogs = (deviceId) => handleApiCall(() => api.get(`/network/device/${deviceId}`));
-
-// Auth with error handling
-export const login = (data) => handleApiCall(() => api.post('/auth/login', data));

@@ -195,9 +195,10 @@ def get_employee_stats(db: Session = Depends(get_db)):
         db.func.count(Employee.id)
     ).group_by(Employee.department).all()
     
-    # Count employees with face data
-    face_service = FaceEmbeddingService(db)
-    employees_with_faces = len(face_service.get_all_employee_ids_with_embeddings())
+    # Count employees with face data using face_templates
+    from app.models.face_template import FaceTemplate
+    employees_with_faces_query = db.query(FaceTemplate.employee_id).distinct().count()
+    employees_with_faces = employees_with_faces_query
     
     return {
         "total_employees": total_employees,
@@ -616,25 +617,3 @@ def delete_employee_face(
         )
     
     return {"message": "Face embedding deleted successfully"}
-def get_employee_stats(db: Session = Depends(get_db)):
-    """Get employee statistics"""
-    total_employees = db.query(Employee).count()
-    
-    # Count employees by department
-    dept_counts = db.query(
-        Employee.department, 
-        db.func.count(Employee.id)
-    ).group_by(Employee.department).all()
-    
-    # Count employees with face data
-    face_service = FaceEmbeddingService(db)
-    employees_with_faces = len(face_service.get_all_employee_ids_with_embeddings())
-    
-    return {
-        "total_employees": total_employees,
-        "employees_with_faces": employees_with_faces,
-        "employees_without_faces": total_employees - employees_with_faces,
-        "departments": {
-            dept: count for dept, count in dept_counts if dept
-        }
-    }

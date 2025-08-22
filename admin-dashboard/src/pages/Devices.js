@@ -360,6 +360,8 @@ export default function Devices() {
               variant="outlined"
               value={formData.device_id}
               onChange={(e) => setFormData({...formData, device_id: e.target.value})}
+              disabled={editingDevice} // Không cho edit mã thiết bị khi update
+              helperText={editingDevice ? "Không thể thay đổi mã thiết bị" : "Nhập mã thiết bị duy nhất"}
               sx={{ mb: 2 }}
             />
             <TextField

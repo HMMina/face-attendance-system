@@ -104,22 +104,40 @@ class EmployeeService:
 
     @staticmethod
     def delete_employee(db: Session, employee_id: str):
-        """Delete employee"""
+        """Delete employee with cascade deletion of related data"""
         try:
+            # Import models inside the function to avoid circular imports
+            from app.models.face_template import FaceTemplate
+            from app.models.attendance import Attendance
+            
             db_employee = EmployeeService.get_employee(db, employee_id)
             if not db_employee:
                 raise HTTPException(status_code=404, detail="Employee not found")
-                
+            
+            # Delete related face templates first
+            face_templates_deleted = db.query(FaceTemplate).filter(FaceTemplate.employee_id == employee_id).delete()
+            logger.info(f"Deleted {face_templates_deleted} face templates for employee {employee_id}")
+            
+            # Delete related attendance records
+            attendance_deleted = db.query(Attendance).filter(Attendance.employee_id == employee_id).delete()
+            logger.info(f"Deleted {attendance_deleted} attendance records for employee {employee_id}")
+            
+            # Now delete the employee
             db.delete(db_employee)
             db.commit()
-            logger.info(f"Deleted employee: {employee_id}")
-            return {"message": "Employee deleted successfully"}
+            
+            logger.info(f"Successfully deleted employee {employee_id} and all related data")
+            return {
+                "message": "Employee deleted successfully",
+                "deleted_face_templates": face_templates_deleted,
+                "deleted_attendance_records": attendance_deleted
+            }
         except HTTPException:
             raise
         except Exception as e:
             db.rollback()
             logger.error(f"Error deleting employee {employee_id}: {e}")
-            raise HTTPException(status_code=500, detail="Error deleting employee")
+            raise HTTPException(status_code=500, detail=f"Error deleting employee: {str(e)}")
 
 # Legacy function wrappers for backward compatibility
 def create_employee(db: Session, employee: EmployeeCreate):
