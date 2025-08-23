@@ -86,6 +86,19 @@ export const uploadEmployeePhoto = (employeeId, photoFile) => handleApiCall(() =
     }
   });
 });
+
+export const uploadMultiplePhotos = (employeeId, photoFiles, selectedAvatarIndex) => handleApiCall(() => {
+  const formData = new FormData();
+  photoFiles.forEach((file, index) => {
+    formData.append('photos', file);
+  });
+  formData.append('selected_avatar_index', selectedAvatarIndex);
+  return api.post(`/employees/${employeeId}/photos/multiple`, formData, {
+    headers: {
+      'Content-Type': 'multipart/form-data'
+    }
+  });
+});
 export const deleteEmployee = (id) => handleApiCall(() => api.delete(`/employees/${id}`));
 
 // Devices with error handling
@@ -94,6 +107,7 @@ export const addDevice = (data) => handleApiCall(() => api.post('/devices', data
 export const updateDevice = (id, data) => handleApiCall(() => api.put(`/devices/${id}`, data));
 export const deleteDevice = (id) => handleApiCall(() => api.delete(`/devices/${id}`));
 export const getDeviceStatus = (id) => handleApiCall(() => api.get(`/devices/${id}`));
+export const cleanupDeletedDevices = () => handleApiCall(() => api.delete('/devices/cleanup/deleted'));
 
 // Attendance with error handling
 export const getAttendanceHistory = (deviceId) => handleApiCall(() => api.get(`/attendance/history/${deviceId}`));

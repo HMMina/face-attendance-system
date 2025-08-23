@@ -68,6 +68,21 @@ def delete_device(db: Session, device_id: int):
     db_device = get_device_by_id(db, device_id)
     if not db_device:
         return None
+    
+    # Delete all attendance records for this device first
+    from app.models.attendance import Attendance
+    attendance_records = db.query(Attendance).filter(
+        Attendance.device_id == db_device.device_id
+    ).all()
+    
+    if attendance_records:
+        # Delete attendance records
+        for attendance in attendance_records:
+            db.delete(attendance)
+        db.commit()
+        print(f"Deleted {len(attendance_records)} attendance records for device {db_device.device_id}")
+    
+    # Now safe to delete the device
     db.delete(db_device)
     db.commit()
     return db_device

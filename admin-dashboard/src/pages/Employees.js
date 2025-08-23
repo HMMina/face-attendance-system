@@ -49,7 +49,7 @@ import {
   PhotoCamera as PhotoCameraIcon,
   CloudUpload as CloudUploadIcon
 } from '@mui/icons-material';
-import { getEmployees, getDepartments, addEmployee, addEmployeeWithPhoto, updateEmployee, uploadEmployeePhoto, deleteEmployee, api } from '../services/api';
+import { getEmployees, getDepartments, addEmployee, addEmployeeWithPhoto, updateEmployee, uploadEmployeePhoto, uploadMultiplePhotos, deleteEmployee, api } from '../services/api';
 
 export default function Employees() {
   const [employees, setEmployees] = useState([]);
@@ -370,9 +370,25 @@ export default function Employees() {
         // Upload photo to backend if selected
         if (selectedPhotos.length > 0 && result.success) {
           try {
-            // Upload the selected avatar photo
-            const avatarPhoto = selectedPhotos[selectedAvatarIndex];
-            await savePhotoToBackend(avatarPhoto.file, editingEmployee.employee_id);
+            if (selectedPhotos.length === 1) {
+              // Upload single photo as avatar
+              const avatarPhoto = selectedPhotos[0];
+              await savePhotoToBackend(avatarPhoto.file, editingEmployee.employee_id);
+            } else {
+              // Upload multiple photos with selected avatar index
+              const photoFiles = selectedPhotos.map(photo => photo.file);
+              const uploadResult = await uploadMultiplePhotos(
+                editingEmployee.employee_id, 
+                photoFiles, 
+                selectedAvatarIndex
+              );
+              
+              if (!uploadResult.success) {
+                throw new Error(uploadResult.error || 'Failed to upload multiple photos');
+              }
+              
+              console.log(`✅ Uploaded ${selectedPhotos.length} photos, avatar index: ${selectedAvatarIndex}`);
+            }
             
             // Force refresh ảnh bằng cách tăng refresh key
             setImageRefreshKey(prev => prev + 1);
@@ -382,7 +398,7 @@ export default function Employees() {
             console.log('✅ Photo updated and employee list refreshed');
           } catch (photoError) {
             console.warn('Failed to upload photo to backend:', photoError);
-            setError('Cập nhật thông tin thành công nhưng upload ảnh thất bại');
+            setError('Cập nhật thông tin thành công nhưng upload ảnh thất bại: ' + photoError.message);
           }
         }
       } else {

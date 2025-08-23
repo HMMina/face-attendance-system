@@ -41,9 +41,57 @@ def update_device_endpoint(device_id: int, device: DeviceCreate, db: Session = D
         raise HTTPException(status_code=404, detail="Device not found")
     return updated_device
 
-@router.delete("/{device_id}", response_model=DeviceOut)
+@router.delete("/{device_id}")
 def delete_device_endpoint(device_id: int, db: Session = Depends(get_db)):
     deleted_device = delete_device(db, device_id)
     if not deleted_device:
         raise HTTPException(status_code=404, detail="Device not found")
-    return deleted_device
+    
+    # Check if device was actually deleted or just deactivated
+    if deleted_device.is_active == False and "[DELETED]" in deleted_device.name:
+        # Device was deactivated due to attendance records
+        return {
+            "success": True,
+            "message": f"Device {deleted_device.name.replace('[DELETED] ', '')} has been deactivated (has attendance records)",
+            "action": "deactivated",
+            "device": {
+                "id": deleted_device.id,
+                "device_id": deleted_device.device_id,
+                "name": deleted_device.name,
+                "is_active": deleted_device.is_active
+            }
+        }
+    else:
+        # Device was completely deleted
+        return {
+            "success": True,
+            "message": f"Device {deleted_device.name} deleted successfully",
+            "action": "deleted",
+            "device": {
+                "id": deleted_device.id,
+                "device_id": deleted_device.device_id,
+                "name": deleted_device.name
+            }
+        }
+
+@router.delete("/cleanup/deleted")
+def cleanup_deleted_devices(db: Session = Depends(get_db)):
+    """Remove all devices marked as [DELETED] from database"""
+    from app.models.device import Device
+    
+    deleted_devices = db.query(Device).filter(
+        Device.name.like('[DELETED]%')
+    ).all()
+    
+    cleanup_count = len(deleted_devices)
+    
+    for device in deleted_devices:
+        db.delete(device)
+    
+    db.commit()
+    
+    return {
+        "success": True,
+        "message": f"Cleaned up {cleanup_count} deleted devices",
+        "cleaned_count": cleanup_count
+    }

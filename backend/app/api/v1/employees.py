@@ -235,7 +235,7 @@ async def upload_employee_photo(
     db: Session = Depends(get_db)
 ):
     """
-    Upload photo for an existing employee
+    Upload photo for an existing employee using enhanced face embedding system
     """
     try:
         # Check if employee exists
@@ -250,41 +250,47 @@ async def upload_employee_photo(
                 detail="File must be an image (JPEG, PNG, etc.)"
             )
         
-        # Read and process photo
+        # Read photo content
         photo_content = await photo.read()
-        image = Image.open(io.BytesIO(photo_content))
         
-        # Save photo to backend/data/employee_photos/
-        import os
-        photos_dir = os.path.join(os.path.dirname(__file__), "../../../data/employee_photos")
-        os.makedirs(photos_dir, exist_ok=True)
+        # Prepare photo data for enhanced service
+        photos_data = [{
+            "filename": photo.filename or f"{employee_id}_avatar.jpg",
+            "data": photo_content
+        }]
         
-        # Save original photo
-        photo_filename = f"{employee_id}.jpg"
-        photo_path = os.path.join(photos_dir, photo_filename)
-        
-        # Convert to RGB if necessary and save
-        if image.mode in ('RGBA', 'LA', 'P'):
-            image = image.convert('RGB')
-        
-        image.save(photo_path, "JPEG", quality=85)
-        
-        # Update employee record with photo path
-        from sqlalchemy import update
-        db.execute(
-            update(Employee)
-            .where(Employee.employee_id == employee_id)
-            .values(photo_path=f"/api/v1/employees/{employee_id}/photo")
+        # Process photo using enhanced face embedding service
+        processing_results = face_embedding_service.process_employee_photos(
+            employee_id, photos_data, selected_avatar_index=0
         )
-        db.commit()
         
-        return {
-            "message": "Photo uploaded successfully",
-            "employee_id": employee_id,
-            "photo_path": photo_path,
-            "photo_url": f"/api/v1/employees/{employee_id}/photo",
-            "file_size": len(photo_content)
-        }
+        # Create face templates in database
+        if processing_results and processing_results[0].get('success'):
+            templates = face_embedding_service.create_face_templates(
+                db, employee_id, processing_results
+            )
+            
+            if templates:
+                template = templates[0]
+                return {
+                    "success": True,
+                    "message": "Photo uploaded and processed successfully",
+                    "employee_id": employee_id,
+                    "photo_url": f"/api/v1/employees/{employee_id}/photo",
+                    "template_id": template.id,
+                    "quality_score": template.quality_score,
+                    "confidence_score": template.confidence_score,
+                    "embedding_created": True
+                }
+            else:
+                raise HTTPException(status_code=500, detail="Failed to create face template")
+        else:
+            # Photo processed but no face detected
+            error_msg = processing_results[0].get('error', 'No face detected') if processing_results else 'Processing failed'
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not process photo: {error_msg}"
+            )
         
     except HTTPException:
         raise
@@ -298,7 +304,7 @@ async def upload_employee_photo(
 @router.get("/{employee_id}/photo")
 async def get_employee_photo(employee_id: str, db: Session = Depends(get_db)):
     """
-    Get employee photo
+    Get employee photo from face templates (avatar with image_id=0)
     """
     try:
         # Check if employee exists
@@ -306,18 +312,20 @@ async def get_employee_photo(employee_id: str, db: Session = Depends(get_db)):
         if not employee:
             raise HTTPException(status_code=404, detail="Employee not found")
         
-        # Check if photo exists
-        import os
-        photos_dir = os.path.join(os.path.dirname(__file__), "../../../data/employee_photos")
-        photo_path = os.path.join(photos_dir, f"{employee_id}.jpg")
+        # Get avatar face template (image_id=0)
+        face_template = db.query(FaceTemplate).filter(
+            FaceTemplate.employee_id == employee_id,
+            FaceTemplate.image_id == 0
+        ).first()
         
-        if not os.path.exists(photo_path):
-            raise HTTPException(status_code=404, detail="Photo not found")
+        if not face_template or not face_template.image_data:
+            raise HTTPException(status_code=404, detail="Avatar photo not found")
         
-        return FileResponse(
-            photo_path,
+        # Return the image data
+        return Response(
+            content=face_template.image_data,
             media_type="image/jpeg",
-            filename=f"{employee_id}.jpg"
+            headers={"Content-Disposition": f"inline; filename={employee_id}_avatar.jpg"}
         )
         
     except HTTPException:
@@ -846,6 +854,38 @@ def get_employee_photo_by_image_id(
     except Exception as e:
         logger.error(f"Error getting photo for employee {employee_id}, image_id {image_id}: {e}")
         raise HTTPException(status_code=500, detail="Failed to get photo")
+
+@router.delete("/{employee_id}/photo")
+def delete_employee_avatar(
+    employee_id: str,
+    db: Session = Depends(get_db)
+):
+    """Delete employee avatar (image_id=0) only"""
+    try:
+        # Validate employee exists
+        employee = get_employee(db, employee_id)
+        if not employee:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        
+        # Delete only avatar (image_id=0) using enhanced service
+        deleted_count = face_embedding_service.delete_employee_avatar(db, employee_id)
+        
+        if deleted_count > 0:
+            return {
+                'success': True,
+                'message': f'Avatar deleted for employee {employee_id}',
+                'deleted_count': deleted_count
+            }
+        else:
+            return {
+                'success': True,
+                'message': f'No avatar found for employee {employee_id}',
+                'deleted_count': 0
+            }
+        
+    except Exception as e:
+        logger.error(f"Error deleting avatar for employee {employee_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete avatar: {str(e)}")
 
 @router.delete("/{employee_id}/photos/all")
 def delete_all_employee_photos(
