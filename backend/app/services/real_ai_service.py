@@ -16,7 +16,7 @@ import os
 from sqlalchemy.orm import Session
 
 # Import database services
-from app.services.face_embedding_service import FaceEmbeddingService
+from app.services.enhanced_face_embedding_service import face_embedding_service as FaceEmbeddingService
 from app.models.employee import Employee
 
 # Will need these dependencies:

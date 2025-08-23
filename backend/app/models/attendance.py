@@ -8,7 +8,7 @@ import datetime
 class Attendance(Base):
     __tablename__ = "attendance"
     id = Column(Integer, primary_key=True, index=True)
-    employee_id = Column(String, ForeignKey("employees.employee_id"))
+    employee_id = Column(String, ForeignKey("employees.employee_id", ondelete="CASCADE"))
     device_id = Column(String, ForeignKey("devices.device_id"))
     timestamp = Column(DateTime, default=datetime.datetime.utcnow)
     confidence = Column(Float)

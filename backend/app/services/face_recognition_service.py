@@ -9,7 +9,7 @@ from pathlib import Path
 import logging
 from app.services.employee_photo_service import photo_service
 from app.services.real_ai_service import RealAIService
-from app.services.face_embedding_service import FaceEmbeddingService
+from app.services.enhanced_face_embedding_service import face_embedding_service as FaceEmbeddingService
 from app.services.employee_service import EmployeeService
 from app.config.database import get_db
 

@@ -1,5 +1,5 @@
 """
-API endpoints for employee management
+API endpoints for employee management with enhanced face embedding system
 """
 from fastapi import APIRouter, Depends, HTTPException, File, UploadFile, Form, Response
 from fastapi.responses import FileResponse
@@ -14,10 +14,9 @@ import numpy as np
 from app.config.database import get_db
 from app.schemas.employee import EmployeeCreate, EmployeeOut
 from app.services.employee_service import create_employee, get_employees, get_employee, update_employee, delete_employee
-from app.services.face_embedding_service import FaceEmbeddingService
-from app.services.real_ai_service import RealAIService
-from app.services.employee_photo_service import photo_service
+from app.services.enhanced_face_embedding_service import face_embedding_service
 from app.models.employee import Employee
+from app.models.face_template import FaceTemplate
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -617,3 +616,257 @@ def delete_employee_face(
         )
     
     return {"message": "Face embedding deleted successfully"}
+
+# ===== NEW ENHANCED FACE EMBEDDING ENDPOINTS =====
+
+@router.post("/{employee_id}/photos/multiple")
+async def upload_multiple_photos(
+    employee_id: str,
+    photos: List[UploadFile] = File(...),
+    selected_avatar_index: int = Form(0),
+    db: Session = Depends(get_db)
+):
+    """
+    Upload multiple photos for an employee with enhanced embedding system
+    - Support up to 4 photos (1 avatar + 3 secondary)
+    - image_id 0 = avatar (selected by selected_avatar_index)
+    - image_id 1,2,3 = secondary templates
+    """
+    try:
+        # Validate employee exists
+        employee = get_employee(db, employee_id)
+        if not employee:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        
+        # Validate input
+        if len(photos) > 4:
+            raise HTTPException(
+                status_code=400, 
+                detail="Maximum 4 photos allowed (1 avatar + 3 secondary templates)"
+            )
+        
+        if selected_avatar_index >= len(photos):
+            raise HTTPException(
+                status_code=400,
+                detail=f"selected_avatar_index ({selected_avatar_index}) out of range for {len(photos)} photos"
+            )
+        
+        # Validate all files are images
+        for idx, photo in enumerate(photos):
+            if not photo.content_type or not photo.content_type.startswith('image/'):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Photo {idx} must be an image (JPEG, PNG, etc.)"
+                )
+        
+        # Prepare photos data
+        photos_data = []
+        for photo in photos:
+            content = await photo.read()
+            photos_data.append({
+                'filename': photo.filename,
+                'data': content
+            })
+        
+        # Process photos with enhanced embedding service
+        processing_results = face_embedding_service.process_employee_photos(
+            employee_id, photos_data, selected_avatar_index
+        )
+        
+        # Create face templates in database
+        face_templates = face_embedding_service.create_face_templates(
+            db, employee_id, processing_results
+        )
+        
+        # Prepare response
+        successful_results = [r for r in processing_results if r['success']]
+        failed_results = [r for r in processing_results if not r['success']]
+        
+        response_data = {
+            'success': True,
+            'employee_id': employee_id,
+            'total_uploaded': len(photos),
+            'successful_processed': len(successful_results),
+            'failed_processed': len(failed_results),
+            'avatar_image_id': 0,
+            'templates_created': len(face_templates),
+            'results': []
+        }
+        
+        # Add detailed results
+        for result in processing_results:
+            if result['success']:
+                response_data['results'].append({
+                    'index': result['index'],
+                    'image_id': result['image_id'],
+                    'is_primary': result['is_primary'],
+                    'filename': result['filename'],
+                    'quality_score': result['quality_score'],
+                    'confidence_score': result['confidence_score'],
+                    'status': 'success'
+                })
+            else:
+                response_data['results'].append({
+                    'index': result['index'],
+                    'image_id': result.get('image_id'),
+                    'error': result['error'],
+                    'status': 'failed'
+                })
+        
+        logger.info(f"Successfully uploaded {len(successful_results)} photos for employee {employee_id}")
+        return response_data
+        
+    except Exception as e:
+        logger.error(f"Error uploading multiple photos for employee {employee_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to process photos: {str(e)}")
+
+@router.put("/{employee_id}/photos/update")
+async def update_employee_photos(
+    employee_id: str,
+    photos: List[UploadFile] = File(...),
+    selected_avatar_index: int = Form(0),
+    db: Session = Depends(get_db)
+):
+    """
+    Update employee photos with rolling template strategy:
+    - Keep avatar (image_id=0) if not replaced
+    - Replace secondary templates (image_id=1,2,3)
+    """
+    try:
+        # Validate employee exists
+        employee = get_employee(db, employee_id)
+        if not employee:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        
+        # Validate input
+        if len(photos) > 4:
+            raise HTTPException(
+                status_code=400, 
+                detail="Maximum 4 photos allowed"
+            )
+        
+        if selected_avatar_index >= len(photos):
+            raise HTTPException(
+                status_code=400,
+                detail=f"selected_avatar_index ({selected_avatar_index}) out of range"
+            )
+        
+        # Prepare photos data
+        photos_data = []
+        for photo in photos:
+            if not photo.content_type or not photo.content_type.startswith('image/'):
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"All files must be images"
+                )
+            
+            content = await photo.read()
+            photos_data.append({
+                'filename': photo.filename,
+                'data': content
+            })
+        
+        # Update templates using enhanced service
+        result = face_embedding_service.update_employee_templates(
+            db, employee_id, photos_data, selected_avatar_index
+        )
+        
+        response_data = {
+            'success': result['success'],
+            'employee_id': employee_id,
+            'avatar_updated': result['avatar_updated'],
+            'secondary_templates_created': result['secondary_templates_created'],
+            'total_templates': result['total_templates'],
+            'processing_results': result['processing_results']
+        }
+        
+        logger.info(f"Successfully updated photos for employee {employee_id}")
+        return response_data
+        
+    except Exception as e:
+        logger.error(f"Error updating photos for employee {employee_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to update photos: {str(e)}")
+
+@router.get("/{employee_id}/templates")
+def get_employee_face_templates(
+    employee_id: str,
+    db: Session = Depends(get_db)
+):
+    """Get all face templates for an employee"""
+    try:
+        # Validate employee exists
+        employee = get_employee(db, employee_id)
+        if not employee:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        
+        # Get templates using enhanced service
+        templates_info = face_embedding_service.get_employee_templates(db, employee_id)
+        
+        return templates_info
+        
+    except Exception as e:
+        logger.error(f"Error getting templates for employee {employee_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to get templates: {str(e)}")
+
+@router.get("/{employee_id}/photos/{image_id}")
+def get_employee_photo_by_image_id(
+    employee_id: str,
+    image_id: int,
+    db: Session = Depends(get_db)
+):
+    """Get a specific photo by image_id (0=avatar, 1,2,3=secondary)"""
+    try:
+        # Get template
+        template = db.query(FaceTemplate).filter(
+            FaceTemplate.employee_id == employee_id,
+            FaceTemplate.image_id == image_id
+        ).first()
+        
+        if not template:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"Photo with image_id {image_id} not found for employee {employee_id}"
+            )
+        
+        # Check if file exists
+        if not os.path.exists(template.file_path):
+            raise HTTPException(
+                status_code=404,
+                detail="Photo file not found on filesystem"
+            )
+        
+        return FileResponse(
+            path=template.file_path,
+            filename=template.filename,
+            media_type='image/jpeg'
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting photo for employee {employee_id}, image_id {image_id}: {e}")
+        raise HTTPException(status_code=500, detail="Failed to get photo")
+
+@router.delete("/{employee_id}/photos/all")
+def delete_all_employee_photos(
+    employee_id: str,
+    db: Session = Depends(get_db)
+):
+    """Delete all photos and face templates for an employee"""
+    try:
+        # Validate employee exists
+        employee = get_employee(db, employee_id)
+        if not employee:
+            raise HTTPException(status_code=404, detail="Employee not found")
+        
+        # Delete using enhanced service
+        face_embedding_service.delete_employee_photos(db, employee_id)
+        
+        return {
+            'success': True,
+            'message': f'All photos and templates deleted for employee {employee_id}'
+        }
+        
+    except Exception as e:
+        logger.error(f"Error deleting photos for employee {employee_id}: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to delete photos: {str(e)}")

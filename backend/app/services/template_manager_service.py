@@ -28,10 +28,10 @@ class TemplateManagerService:
     MIN_CONFIDENCE_FOR_TEMPLATE = 0.85
     MIN_QUALITY_SCORE = 0.8
         
-    def _generate_image_id(self, employee_id: str, template_order: int) -> str:
-        """Generate unique image ID for database record"""
+    def _generate_filename(self, employee_id: str, image_id: int) -> str:
+        """Generate filename for image storage"""
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        return f"template_{employee_id}_{template_order}_{timestamp}"
+        return f"{employee_id}_image_{image_id}_{timestamp}.jpg"
     
     async def add_admin_template(self, db: Session, employee_id: str, 
                                image: np.ndarray, quality_score: float, 

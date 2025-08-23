@@ -125,7 +125,9 @@ async def get_employee_templates(
         for template in templates:
             template_data.append({
                 "template_id": template.id,
-                "template_order": template.template_order,
+                "image_id": template.image_id,
+                "filename": template.filename,
+                "is_primary": template.is_primary,
                 "created_from": template.created_from,
                 "created_at": template.created_at,
                 "age_days": template.age_days,
@@ -300,7 +302,7 @@ async def get_all_templates(
     """Get all templates with pagination"""
     try:
         query = db.query(FaceTemplate).order_by(
-            FaceTemplate.employee_id, FaceTemplate.template_order
+            FaceTemplate.employee_id, FaceTemplate.image_id
         )
         
         if limit:
@@ -320,8 +322,10 @@ async def get_all_templates(
             template_data.append({
                 "template_id": template.id,
                 "employee_id": template.employee_id,
-                "employee_name": employee.full_name if employee else "Unknown",
-                "template_order": template.template_order,
+                "employee_name": employee.name if employee else "Unknown",
+                "image_id": template.image_id,
+                "filename": template.filename,
+                "is_primary": template.is_primary,
                 "created_from": template.created_from,
                 "created_at": template.created_at,
                 "age_days": template.age_days,

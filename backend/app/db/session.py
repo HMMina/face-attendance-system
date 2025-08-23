@@ -23,9 +23,7 @@ engine = create_engine(
         "check_same_thread": False,  # For SQLite compatibility
         "pool_timeout": 20,
         "pool_recycle": -1,
-    } if "sqlite" in settings.DATABASE_URL else {
-        "pool_timeout": 20,
-    }
+    } if "sqlite" in settings.DATABASE_URL else {}
 )
 
 # Create session factory
