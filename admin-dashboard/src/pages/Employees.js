@@ -377,11 +377,17 @@ export default function Employees() {
             } else {
               // Upload multiple photos with selected avatar index
               const photoFiles = selectedPhotos.map(photo => photo.file);
+              console.log(`🚀 DEBUG: Starting multiple photos upload for employee ${editingEmployee.employee_id}`);
+              console.log(`📸 DEBUG: Photo count: ${photoFiles.length}, Avatar index: ${selectedAvatarIndex}`);
+              console.log('📋 DEBUG: Photo files:', photoFiles.map(f => ({ name: f.name, size: f.size, type: f.type })));
+              
               const uploadResult = await uploadMultiplePhotos(
                 editingEmployee.employee_id, 
                 photoFiles, 
                 selectedAvatarIndex
               );
+              
+              console.log('📡 DEBUG: Upload result:', uploadResult);
               
               if (!uploadResult.success) {
                 throw new Error(uploadResult.error || 'Failed to upload multiple photos');

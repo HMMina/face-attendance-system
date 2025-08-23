@@ -88,11 +88,18 @@ export const uploadEmployeePhoto = (employeeId, photoFile) => handleApiCall(() =
 });
 
 export const uploadMultiplePhotos = (employeeId, photoFiles, selectedAvatarIndex) => handleApiCall(() => {
+  console.log(`🌐 API DEBUG: Starting uploadMultiplePhotos for employee ${employeeId}`);
+  console.log(`📸 API DEBUG: ${photoFiles.length} files, avatar index: ${selectedAvatarIndex}`);
+  
   const formData = new FormData();
   photoFiles.forEach((file, index) => {
+    console.log(`📁 API DEBUG: Adding file ${index}: ${file.name} (${file.size} bytes, ${file.type})`);
     formData.append('photos', file);
   });
   formData.append('selected_avatar_index', selectedAvatarIndex);
+  
+  console.log(`📡 API DEBUG: Sending POST to /employees/${employeeId}/photos/multiple`);
+  
   return api.post(`/employees/${employeeId}/photos/multiple`, formData, {
     headers: {
       'Content-Type': 'multipart/form-data'

@@ -318,14 +318,18 @@ async def get_employee_photo(employee_id: str, db: Session = Depends(get_db)):
             FaceTemplate.image_id == 0
         ).first()
         
-        if not face_template or not face_template.image_data:
+        if not face_template or not face_template.file_path:
             raise HTTPException(status_code=404, detail="Avatar photo not found")
         
-        # Return the image data
-        return Response(
-            content=face_template.image_data,
+        # Check if file exists
+        if not os.path.exists(face_template.file_path):
+            raise HTTPException(status_code=404, detail="Avatar file not found on disk")
+        
+        # Return the image file
+        return FileResponse(
+            path=face_template.file_path,
             media_type="image/jpeg",
-            headers={"Content-Disposition": f"inline; filename={employee_id}_avatar.jpg"}
+            filename=f"{employee_id}_avatar.jpg"
         )
         
     except HTTPException:
@@ -631,7 +635,7 @@ def delete_employee_face(
 async def upload_multiple_photos(
     employee_id: str,
     photos: List[UploadFile] = File(...),
-    selected_avatar_index: int = Form(0),
+    selected_avatar_index: Optional[int] = Form(None),
     db: Session = Depends(get_db)
 ):
     """
@@ -641,10 +645,36 @@ async def upload_multiple_photos(
     - image_id 1,2,3 = secondary templates
     """
     try:
+        # Handle default avatar index
+        if selected_avatar_index is None:
+            selected_avatar_index = 0
+            
         # Validate employee exists
         employee = get_employee(db, employee_id)
         if not employee:
             raise HTTPException(status_code=404, detail="Employee not found")
+        
+        # Delete existing face templates for this employee to avoid duplicates
+        existing_templates = db.query(FaceTemplate).filter(
+            FaceTemplate.employee_id == employee_id
+        ).all()
+        
+        if existing_templates:
+            logger.info(f"Deleting {len(existing_templates)} existing face templates for employee {employee_id}")
+            for template in existing_templates:
+                # Delete physical files
+                if template.file_path and os.path.exists(template.file_path):
+                    try:
+                        os.remove(template.file_path)
+                        logger.info(f"Deleted file: {template.file_path}")
+                    except Exception as e:
+                        logger.warning(f"Could not delete file {template.file_path}: {e}")
+                
+                # Delete database record
+                db.delete(template)
+            
+            db.commit()
+            logger.info(f"Successfully deleted existing templates for employee {employee_id}")
         
         # Validate input
         if len(photos) > 4:

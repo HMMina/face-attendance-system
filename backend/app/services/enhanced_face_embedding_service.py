@@ -106,7 +106,7 @@ class FaceEmbeddingService:
                 metadata = {
                     "face_count": len(faces),
                     "bbox": largest_face.bbox.tolist(),
-                    "age": int(largest_face.age) if hasattr(largest_face, 'age') else None,
+                    "age": int(largest_face.age) if hasattr(largest_face, 'age') and largest_face.age is not None else None,
                     "gender": largest_face.sex if hasattr(largest_face, 'sex') else None,
                     "embedding_size": len(embedding)
                 }
