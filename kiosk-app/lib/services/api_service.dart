@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
 import 'discovery_service.dart';
 
 class ApiService {
@@ -24,6 +25,11 @@ class ApiService {
         };
       }
 
+      // Debug logging
+      print('ApiService: Sending image to $serverUrl');
+      print('ApiService: Image size: ${imageBytes.length} bytes');
+      print('ApiService: Device ID: $deviceId');
+
       // Prepare multipart request
       final uri = Uri.parse('$serverUrl/api/v1/attendance/check');
       final request = http.MultipartRequest('POST', uri);
@@ -37,6 +43,7 @@ class ApiService {
           'image',
           imageBytes,
           filename: 'attendance_${DateTime.now().millisecondsSinceEpoch}.jpg',
+          contentType: MediaType('image', 'jpeg'),
         ),
       );
 

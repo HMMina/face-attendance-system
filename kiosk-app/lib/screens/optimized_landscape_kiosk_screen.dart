@@ -2,10 +2,10 @@
 /// Giao diện ngang tối ưu: Camera trước bên trái, nút chụp và kết quả bên phải
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'dart:typed_data';
 import 'dart:async';
 import '../widgets/optimized_camera_widget.dart';
 import '../services/api_service.dart';
+import '../services/discovery_service.dart';
 import '../services/enhanced_camera_service.dart';
 import '../config/device_config.dart';
 
@@ -121,7 +121,7 @@ class _OptimizedLandscapeKioskScreenState extends State<OptimizedLandscapeKioskS
   }
 
   // Mock data for testing - Enable this for testing without backend
-  static const bool useMockData = true; // Set to false for production
+  static const bool useMockData = false; // Set to false for production
   
   Map<String, dynamic> _generateMockResult() {
     List<Map<String, String>> mockEmployees = [
@@ -709,25 +709,57 @@ class _OptimizedLandscapeKioskScreenState extends State<OptimizedLandscapeKioskS
                     ),
                     child: Column(
                       children: [
-                        // Name và attendance type trong 1 row
+                        // Avatar + Name và attendance type
                         Row(
                           children: [
-                            Icon(
-                              Icons.person,
-                              size: 24,
-                              color: Colors.blue[600],
+                            // Employee Avatar
+                            FutureBuilder<String?>(
+                              future: DiscoveryService.getServerUrl(),
+                              builder: (context, snapshot) {
+                                final serverUrl = snapshot.data ?? 'http://localhost:8000';
+                                return CircleAvatar(
+                                  radius: 30,
+                                  backgroundColor: Colors.grey[300],
+                                  backgroundImage: result!['employee']['avatar_url'] != null
+                                      ? NetworkImage('$serverUrl${result!['employee']['avatar_url']}')
+                                      : null,
+                                  child: result!['employee']['avatar_url'] == null
+                                      ? Icon(
+                                          Icons.person,
+                                          size: 30,
+                                          color: Colors.grey[600],
+                                        )
+                                      : null,
+                                );
+                              },
                             ),
-                            const SizedBox(width: 8),
+                            
+                            const SizedBox(width: 12),
+                            
                             Expanded(
-                              child: Text(
-                                result!['employee']['name'] ?? '',
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Colors.black87,
-                                ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    result!['employee']['name'] ?? '',
+                                    style: const TextStyle(
+                                      fontSize: 18,
+                                      fontWeight: FontWeight.bold,
+                                      color: Colors.black87,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    '${result!['employee']['position']} - ${result!['employee']['department']}',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: Colors.grey[600],
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
+                            
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                               decoration: BoxDecoration(
@@ -744,18 +776,6 @@ class _OptimizedLandscapeKioskScreenState extends State<OptimizedLandscapeKioskS
                               ),
                             ),
                           ],
-                        ),
-                        
-                        const SizedBox(height: 8),
-                        
-                        // Position và department
-                        Text(
-                          '${result!['employee']['position']} - ${result!['employee']['department']}',
-                          style: TextStyle(
-                            fontSize: 14,
-                            color: Colors.grey[600],
-                          ),
-                          textAlign: TextAlign.center,
                         ),
                         
                         const SizedBox(height: 12),

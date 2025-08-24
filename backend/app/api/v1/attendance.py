@@ -25,9 +25,19 @@ async def check_attendance(
     Endpoint cho kiosk app để gửi ảnh và nhận kết quả chấm công
     """
     try:
-        # Validate image
-        if not image.content_type.startswith('image/'):
+        # Debug logging
+        logger.info(f"Received file: {image.filename}")
+        logger.info(f"Content type: {image.content_type}")
+        logger.info(f"File size: {image.size if hasattr(image, 'size') else 'Unknown'}")
+        
+        # Validate image - allow files without content type or with image content type
+        if image.content_type and not image.content_type.startswith('image/'):
+            logger.error(f"Invalid content type: {image.content_type}")
             raise HTTPException(status_code=400, detail="File must be an image")
+        
+        # If no content type, try to validate by reading the file
+        if not image.content_type:
+            logger.warning("No content type provided, will validate by file content")
         
         # Use enhanced face recognition with template system
         from app.services.enhanced_recognition_service import get_enhanced_recognition_service
@@ -47,7 +57,8 @@ async def check_attendance(
         # Save image first
         os.makedirs(UPLOAD_DIR, exist_ok=True)
         timestamp = datetime.datetime.now()
-        file_path = os.path.join(UPLOAD_DIR, f"attendance_{device_id}_{timestamp.isoformat()}.jpg")
+        timestamp_str = timestamp.strftime("%Y%m%d_%H%M%S_%f")
+        file_path = os.path.join(UPLOAD_DIR, f"attendance_{device_id}_{timestamp_str}.jpg")
         
         with open(file_path, "wb") as f:
             f.write(image_data)
@@ -89,6 +100,10 @@ async def check_attendance(
         template_id = recognition_result.get("template_id")
         template_order = recognition_result.get("template_order")
         
+        # Get full employee information for response
+        from app.services.employee_service import get_employee
+        employee = get_employee(db, employee_id)
+        
         # Save attendance record with enhanced info
         attendance = Attendance(
             employee_id=employee_id,
@@ -96,7 +111,7 @@ async def check_attendance(
             confidence=confidence,
             image_path=file_path,
             timestamp=timestamp,
-            action_type="RECOGNIZED"
+            action_type="CHECK_IN"  # Default action type
         )
         db.add(attendance)
         db.commit()
@@ -105,21 +120,31 @@ async def check_attendance(
         logger.info(f"Enhanced attendance recorded for employee {employee_id} from device {device_id} "
                    f"with confidence {confidence:.3f} using template {template_order}")
         
-        return {
+        # Build response for kiosk app
+        response = {
             "success": True,
             "employee_id": employee_id,
             "employee_name": employee_name,
             "confidence": confidence,
-            "confidence_level": confidence_level,
             "timestamp": timestamp.isoformat(),
+            "formatted_time": timestamp.strftime("%d/%m/%Y %H:%M:%S"),
+            "action": "check_in",
+            "action_text": "Vào làm",
             "attendance_id": attendance.id,
-            "recognition_details": {
-                "template_id": template_id,
-                "template_order": template_order,
-                "template_source": recognition_result.get("template_source"),
-                "similarity_score": confidence
-            }
+            "message": f"Chấm công thành công! Chào mừng {employee_name}",
         }
+        
+        # Add employee details if available
+        if employee:
+            response["employee"] = {
+                "name": employee.name,
+                "employee_id": employee.employee_id,
+                "department": employee.department,
+                "position": employee.position,
+                "avatar_url": f"/api/v1/employees/{employee_id}/photo"
+            }
+        
+        return response
         
     except Exception as e:
         logger.error(f"Error in attendance check: {e}")

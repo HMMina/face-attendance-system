@@ -8,37 +8,56 @@ class DiscoveryService {
   
   /// Get server URL với caching và fallback
   static Future<String?> getServerUrl() async {
+    print('DiscoveryService: Starting server discovery...');
+    
     // Return cached URL if available
     if (_cachedServerUrl != null) {
+      print('DiscoveryService: Testing cached URL: $_cachedServerUrl');
       final isReachable = await _testUrl(_cachedServerUrl!);
-      if (isReachable) return _cachedServerUrl;
+      if (isReachable) {
+        print('DiscoveryService: Cached URL is reachable');
+        return _cachedServerUrl;
+      }
+      print('DiscoveryService: Cached URL is not reachable, clearing cache');
       _cachedServerUrl = null; // Clear invalid cache
     }
     
     // Try to discover server
+    print('DiscoveryService: Attempting server discovery...');
     final discoveredUrl = await discoverServer();
     if (discoveredUrl != null) {
+      print('DiscoveryService: Server discovered at: $discoveredUrl');
       _cachedServerUrl = discoveredUrl;
       return discoveredUrl;
     }
     
-    // Fallback to default localhost
-    const fallbackUrl = 'http://localhost:8000';
-    final isReachable = await _testUrl(fallbackUrl);
-    if (isReachable) {
-      _cachedServerUrl = fallbackUrl;
-      return fallbackUrl;
-    }
+    // Fallback to Android emulator localhost first, then regular localhost
+    print('DiscoveryService: Discovery failed, trying fallback URLs...');
+    const fallbackUrls = [
+      'http://10.0.2.2:8000',      // Android emulator
+      'http://localhost:8000',      // Regular localhost
+    ];
     
+    for (final fallbackUrl in fallbackUrls) {
+      print('DiscoveryService: Testing fallback URL: $fallbackUrl');
+      final isReachable = await _testUrl(fallbackUrl);
+      if (isReachable) {
+        print('DiscoveryService: Fallback URL is reachable: $fallbackUrl');
+        _cachedServerUrl = fallbackUrl;
+        return fallbackUrl;
+      }
+    }
+
+    print('DiscoveryService: All discovery attempts failed');
     return null;
-  }
-  
-  /// mDNS discovery với timeout
+  }  /// mDNS discovery với timeout
   static Future<String?> discoverServer() async {
     try {
       // TODO: Implement real mDNS discovery
       // For now, try common local network IPs
       final commonIPs = [
+        'http://10.0.2.2:8000',      // Android emulator localhost
+        'http://localhost:8000',      // Real device localhost
         'http://192.168.1.10:8000',
         'http://192.168.1.100:8000', 
         'http://192.168.0.10:8000',
@@ -46,8 +65,12 @@ class DiscoveryService {
       ];
       
       for (final ip in commonIPs) {
+        print('DiscoveryService: Testing IP: $ip');
         final isReachable = await _testUrl(ip);
-        if (isReachable) return ip;
+        if (isReachable) {
+          print('DiscoveryService: Found reachable server at: $ip');
+          return ip;
+        }
       }
       
       return null;
