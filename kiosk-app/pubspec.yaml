@@ -16,6 +16,7 @@ dependencies:
   
   # Network & API
   http: ^1.1.2
+  http_parser: ^4.0.2
   dio: ^5.4.0
   connectivity_plus: ^5.0.2
   
