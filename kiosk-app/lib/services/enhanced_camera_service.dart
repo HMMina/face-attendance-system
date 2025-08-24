@@ -1,7 +1,6 @@
 /// Enhanced Camera Service for Optimized Kiosk
 /// Service xử lý camera với tối ưu hóa cho kiosk mode
 import 'package:camera/camera.dart';
-import 'dart:typed_data';
 import 'package:flutter/services.dart';
 
 class EnhancedCameraService {

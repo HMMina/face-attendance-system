@@ -58,8 +58,8 @@ class DiscoveryService {
   /// mDNS discovery với timeout
   static Future<String?> discoverServer() async {
     try {
-      // TODO: Implement real mDNS discovery
-      // For now, try common local network IPs
+      // Implementation: Try common local network IPs
+      // Note: Real mDNS discovery can be added later if needed
       final commonIPs = [
         'http://10.0.2.2:8000',      // Android emulator localhost
         'http://localhost:8000',      // Real device localhost
