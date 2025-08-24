@@ -1,7 +1,6 @@
 /// Màn hình tìm server qua mDNS
 import 'package:flutter/material.dart';
-import '../services/discovery_service.dart';
-import '../config/network_config.dart';
+import '../services/discovery_service_fixed.dart';
 
 class ServerDiscoveryScreen extends StatefulWidget {
   const ServerDiscoveryScreen({super.key});

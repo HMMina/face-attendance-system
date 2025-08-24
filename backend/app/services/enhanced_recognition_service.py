@@ -399,6 +399,184 @@ class EnhancedRecognitionService:
         
         logger.info(f"Updated thresholds: Recognition={self.RECOGNITION_THRESHOLD}, "
                    f"High={self.HIGH_CONFIDENCE_THRESHOLD}, VeryHigh={self.VERY_HIGH_CONFIDENCE_THRESHOLD}")
+    
+    async def register_face(self, db: Session, face_image: np.ndarray, 
+                           employee_id: str, device_id: str = None) -> Dict:
+        """
+        Register a new face for an employee with anti-spoofing check
+        """
+        try:
+            # 1. Anti-spoofing check first
+            is_real = self.ai_service.anti_spoofing(face_image)
+            if not is_real:
+                logger.warning(f"🚨 SPOOF DETECTED during registration for employee {employee_id}")
+                return {
+                    "success": False,
+                    "message": "Spoof detected in registration image - please use a real photo",
+                    "employee_id": employee_id
+                }
+            
+            logger.info(f"✅ Anti-spoofing passed for employee {employee_id} registration")
+            
+            # 2. Detect face
+            found, bbox = self.ai_service.detect_face(face_image)
+            if not found:
+                return {
+                    "success": False,
+                    "message": "No face detected in registration image",
+                    "employee_id": employee_id
+                }
+            
+            # 3. Extract embedding
+            input_embedding = self.ai_service.extract_embedding(face_image, bbox)
+            if input_embedding is None:
+                return {
+                    "success": False,
+                    "message": "Failed to extract face embedding from registration image",
+                    "employee_id": employee_id
+                }
+            
+            # 4. Check if employee exists
+            employee = db.query(Employee).filter(Employee.employee_id == employee_id).first()
+            if not employee:
+                return {
+                    "success": False,
+                    "message": f"Employee {employee_id} not found in database",
+                    "employee_id": employee_id
+                }
+            
+            # 5. Find next available image_id for this employee
+            existing_templates = db.query(FaceTemplate).filter(
+                FaceTemplate.employee_id == employee_id
+            ).order_by(FaceTemplate.image_id).all()
+            
+            used_image_ids = [t.image_id for t in existing_templates]
+            next_image_id = 0  # Start with 0 (avatar)
+            while next_image_id in used_image_ids and next_image_id < 4:
+                next_image_id += 1
+            
+            if next_image_id >= 4:
+                return {
+                    "success": False,
+                    "message": f"Maximum templates (4) already exist for employee {employee_id}",
+                    "employee_id": employee_id,
+                    "existing_templates": len(existing_templates)
+                }
+            
+            # 6. Create new face template
+            new_template = FaceTemplate(
+                employee_id=employee_id,
+                image_id=next_image_id,
+                embedding_vector=input_embedding.tolist(),
+                created_from="registration",
+                is_primary=(next_image_id == 0),  # First template is primary
+                match_count=0,
+                avg_match_confidence=0.0,
+                created_at=datetime.datetime.utcnow()
+            )
+            
+            db.add(new_template)
+            db.commit()
+            db.refresh(new_template)
+            
+            # 7. Save registration image
+            saved_image_path = self._save_recognition_image(face_image, employee_id, 1.0)
+            
+            logger.info(f"✅ Registered face template for employee {employee_id} with image_id {next_image_id}")
+            
+            return {
+                "success": True,
+                "message": f"Face registered successfully for employee {employee_id}",
+                "employee_id": employee_id,
+                "template_id": new_template.id,
+                "image_id": next_image_id,
+                "is_primary": new_template.is_primary,
+                "total_templates": len(existing_templates) + 1,
+                "saved_image": saved_image_path,
+                "device_id": device_id
+            }
+            
+        except Exception as e:
+            logger.error(f"Error in face registration for employee {employee_id}: {e}")
+            db.rollback()
+            return {
+                "success": False,
+                "message": f"Registration error: {str(e)}",
+                "employee_id": employee_id
+            }
+    
+    def get_service_status(self) -> Dict:
+        """
+        Get enhanced recognition service status
+        """
+        try:
+            return {
+                "status": "active",
+                "service_type": "enhanced_recognition",
+                "ai_enabled": True,
+                "models": {
+                    "face_detection": self.ai_service.face_detector is not None,
+                    "anti_spoofing": self.ai_service.anti_spoof_model is not None,
+                    "face_recognition": self.ai_service.face_recognizer is not None
+                },
+                "thresholds": {
+                    "recognition": self.RECOGNITION_THRESHOLD,
+                    "high_confidence": self.HIGH_CONFIDENCE_THRESHOLD,
+                    "very_high_confidence": self.VERY_HIGH_CONFIDENCE_THRESHOLD,
+                    "min_quality_learning": self.MIN_QUALITY_FOR_LEARNING,
+                    "min_confidence_learning": self.MIN_CONFIDENCE_FOR_LEARNING
+                },
+                "model_path": str(self.ai_service.model_path),
+                "uploads_dir": str(self.uploads_dir)
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting service status: {e}")
+            return {
+                "status": "error",
+                "service_type": "enhanced_recognition",
+                "ai_enabled": False,
+                "error": str(e)
+            }
+    
+    def health_check(self) -> Dict:
+        """
+        Enhanced recognition service health check
+        """
+        try:
+            # Check if AI service is available
+            if not self.ai_service:
+                return {
+                    "healthy": False,
+                    "message": "AI service not available",
+                    "models": {}
+                }
+            
+            # Test if models are loaded
+            models_loaded = {
+                "detection": self.ai_service.face_detector is not None,
+                "anti_spoofing": self.ai_service.anti_spoof_model is not None, 
+                "recognition": self.ai_service.face_recognizer is not None
+            }
+            
+            all_models_loaded = all(models_loaded.values())
+            
+            return {
+                "healthy": all_models_loaded,
+                "models": models_loaded,
+                "service_type": "enhanced_recognition",
+                "thresholds_configured": True,
+                "uploads_dir_exists": self.uploads_dir.exists(),
+                "message": "All AI models loaded and service ready" if all_models_loaded else "Some AI models missing"
+            }
+            
+        except Exception as e:
+            logger.error(f"Health check error: {e}")
+            return {
+                "healthy": False,
+                "error": str(e),
+                "message": "Enhanced recognition service unavailable"
+            }
 
 # Singleton instance
 _enhanced_recognition_service = None

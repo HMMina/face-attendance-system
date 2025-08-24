@@ -1,11 +1,11 @@
 """
-API endpoint for face recognition with real AI models
+API endpoint for face recognition with enhanced AI models and template system
 """
 from fastapi import APIRouter, UploadFile, File, Form, Depends, HTTPException
 from sqlalchemy.orm import Session
 from app.config.database import get_db
-from app.services.face_recognition_service import FaceRecognitionService
-from app.services.real_ai_service import RealAIService, get_ai_service
+from app.services.enhanced_recognition_service import get_enhanced_recognition_service
+from app.services.real_ai_service import get_ai_service
 import cv2
 import numpy as np
 import logging
@@ -13,8 +13,8 @@ import logging
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
-# Initialize face recognition service
-face_recognition_service = FaceRecognitionService()
+# Initialize enhanced recognition service
+enhanced_recognition_service = get_enhanced_recognition_service()
 
 @router.post("/face")
 async def recognize_face(
@@ -23,7 +23,7 @@ async def recognize_face(
     db: Session = Depends(get_db)
 ):
     """
-    Face recognition endpoint using real AI models
+    Face recognition endpoint using enhanced recognition service
     """
     try:
         # Read image data
@@ -36,8 +36,8 @@ async def recognize_face(
         if camera_image is None:
             raise HTTPException(status_code=400, detail="Invalid image format")
         
-        # Use real AI face recognition service
-        result = await face_recognition_service.recognize_face_from_camera(camera_image, db)
+        # Use enhanced recognition service with template system
+        result = await enhanced_recognition_service.recognize_face(db, camera_image)
         
         # Add device context
         result["device_id"] = device_id
@@ -56,7 +56,7 @@ async def register_face(
     db: Session = Depends(get_db)
 ):
     """
-    Register new face for an employee using real AI
+    Register new face for an employee using enhanced recognition service
     """
     try:
         # Read image data
@@ -69,24 +69,15 @@ async def register_face(
         if camera_image is None:
             raise HTTPException(status_code=400, detail="Invalid image format")
         
-        # Use real AI service for registration
-        ai_service = get_ai_service()
-        result = await ai_service.process_recognition(camera_image)
+        # Use enhanced recognition service for registration
+        result = await enhanced_recognition_service.register_face(
+            db, camera_image, employee_id, device_id
+        )
         
-        if not result.get("face_detected"):
-            raise HTTPException(status_code=400, detail="No face detected in image")
+        if not result.get("success"):
+            raise HTTPException(status_code=400, detail=result.get("message", "Registration failed"))
         
-        if not result.get("is_real"):
-            raise HTTPException(status_code=400, detail="Spoof detection: Image appears to be fake")
-        
-        # Store face embedding for employee
-        return {
-            "success": True,
-            "message": f"Face registered successfully for employee {employee_id}",
-            "employee_id": employee_id,
-            "device_id": device_id,
-            "confidence": result.get("confidence", 0.0)
-        }
+        return result
         
     except Exception as e:
         logger.error(f"Registration error: {e}")
@@ -95,59 +86,32 @@ async def register_face(
 @router.get("/status")
 def ai_status():
     """
-    Get AI service status
+    Get enhanced recognition service status
     """
     try:
-        ai_service = get_ai_service()
-        
-        return {
-            "status": "active",
-            "ai_enabled": True,
-            "service_type": "real_ai",
-            "models": {
-                "face_detection": ai_service.face_detector is not None,
-                "anti_spoofing": ai_service.anti_spoof_model is not None,
-                "face_recognition": ai_service.face_recognizer is not None
-            },
-            "model_path": str(ai_service.model_path)
-        }
+        return enhanced_recognition_service.get_service_status()
     
     except Exception as e:
         logger.error(f"AI status error: {e}")
         return {
             "status": "error",
             "ai_enabled": False,
-            "service_type": "none",
+            "service_type": "enhanced_recognition",
             "error": str(e)
         }
 
 @router.get("/health")
 def health_check():
     """
-    AI service health check
+    Enhanced recognition service health check
     """
     try:
-        ai_service = get_ai_service()
-        
-        # Test if models are loaded
-        models_loaded = {
-            "detection": ai_service.face_detector is not None,
-            "classification": ai_service.anti_spoof_model is not None, 
-            "recognition": ai_service.face_recognizer is not None
-        }
-        
-        all_models_loaded = all(models_loaded.values())
-        
-        return {
-            "healthy": all_models_loaded,
-            "models": models_loaded,
-            "message": "All AI models loaded" if all_models_loaded else "Some AI models missing"
-        }
+        return enhanced_recognition_service.health_check()
     
     except Exception as e:
         logger.error(f"Health check error: {e}")
         return {
             "healthy": False,
             "error": str(e),
-            "message": "AI service unavailable"
+            "message": "Enhanced recognition service unavailable"
         }

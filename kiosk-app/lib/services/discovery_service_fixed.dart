@@ -53,7 +53,9 @@ class DiscoveryService {
 
     print('DiscoveryService: All discovery attempts failed');
     return null;
-  }  /// mDNS discovery với timeout
+  }
+
+  /// mDNS discovery với timeout
   static Future<String?> discoverServer() async {
     try {
       // TODO: Implement real mDNS discovery
@@ -78,12 +80,12 @@ class DiscoveryService {
       
       return null;
     } catch (e) {
-      print('Discovery error: $e');
+      print('DiscoveryService: Discovery error: $e');
       return null;
     }
   }
-  
-  /// Test if URL is reachable
+
+  /// Test URL và trả về boolean
   static Future<bool> _testUrl(String url) async {
     try {
       final response = await http.get(
@@ -95,10 +97,5 @@ class DiscoveryService {
     } catch (e) {
       return false;
     }
-  }
-  
-  /// Clear cached server URL
-  static void clearCache() {
-    _cachedServerUrl = null;
   }
 }

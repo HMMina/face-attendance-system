@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
-import 'discovery_service.dart';
+import 'discovery_service_fixed.dart';
 
 class ApiService {
   static const Duration _timeout = Duration(seconds: 30);

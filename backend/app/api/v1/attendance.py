@@ -1,14 +1,18 @@
 """
-API lấy lịch sử chấm công và nhận batch dữ liệu offline
+API lấy lịch sử chấm công và nhận batch dữ liệu offline - Multi-Kiosk Optimized
 """
-from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException
+from fastapi import APIRouter, Depends, UploadFile, File, Form, HTTPException, Request
 from sqlalchemy.orm import Session
 from app.config.database import get_db
 from app.models.attendance import Attendance
 from app.schemas.attendance import AttendanceOut
+from app.services.device_manager import get_device_manager, DeviceManager
+from app.config.multi_kiosk_config_fixed import get_device_upload_path
 import datetime
 import os
 import logging
+import time
+import asyncio
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -17,54 +21,73 @@ UPLOAD_DIR = './data/uploads/faces/originals/'
 
 @router.post("/check")
 async def check_attendance(
+    request: Request,
     image: UploadFile = File(...),
     device_id: str = Form(...),
-    db: Session = Depends(get_db)
+    db: Session = Depends(get_db),
+    device_manager: DeviceManager = Depends(get_device_manager)
 ):
     """
-    Endpoint cho kiosk app để gửi ảnh và nhận kết quả chấm công
+    Multi-Kiosk Optimized Endpoint cho kiosk app để gửi ảnh và nhận kết quả chấm công
     """
+    start_time = time.time()
+    client_ip = request.client.host if request.client else "unknown"
+    
     try:
-        # Debug logging
-        logger.info(f"Received file: {image.filename}")
-        logger.info(f"Content type: {image.content_type}")
-        logger.info(f"File size: {image.size if hasattr(image, 'size') else 'Unknown'}")
+        # 1. Register/Update device in system
+        await device_manager.register_device(
+            device_id=device_id,
+            device_name=f"Kiosk_{device_id}",
+            ip_address=client_ip
+        )
         
-        # Validate image - allow files without content type or with image content type
-        if image.content_type and not image.content_type.startswith('image/'):
-            logger.error(f"Invalid content type: {image.content_type}")
-            raise HTTPException(status_code=400, detail="File must be an image")
+        # 2. Get device-specific lock to prevent concurrent processing
+        device_lock = await device_manager.get_device_lock(device_id)
         
-        # If no content type, try to validate by reading the file
-        if not image.content_type:
-            logger.warning("No content type provided, will validate by file content")
-        
-        # Use enhanced face recognition with template system
-        from app.services.enhanced_recognition_service import get_enhanced_recognition_service
-        import cv2
-        import numpy as np
-        
-        enhanced_recognition_service = get_enhanced_recognition_service()
-        
-        # Convert uploaded image to OpenCV format
-        image_data = await image.read()
-        nparr = np.frombuffer(image_data, np.uint8)
-        camera_image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        
-        if camera_image is None:
-            raise HTTPException(status_code=400, detail="Invalid image format")
-        
-        # Save image first
-        os.makedirs(UPLOAD_DIR, exist_ok=True)
-        timestamp = datetime.datetime.now()
-        timestamp_str = timestamp.strftime("%Y%m%d_%H%M%S_%f")
-        file_path = os.path.join(UPLOAD_DIR, f"attendance_{device_id}_{timestamp_str}.jpg")
-        
-        with open(file_path, "wb") as f:
-            f.write(image_data)
-        
-        # Enhanced face recognition with template learning
-        recognition_result = await enhanced_recognition_service.recognize_face(db, camera_image)
+        async with device_lock:
+            # Debug logging
+            logger.info(f"🎯 Processing request from device {device_id} at {client_ip}")
+            logger.info(f"Received file: {image.filename}")
+            logger.info(f"Content type: {image.content_type}")
+            logger.info(f"File size: {image.size if hasattr(image, 'size') else 'Unknown'}")
+            
+            # Validate image - allow files without content type or with image content type
+            if image.content_type and not image.content_type.startswith('image/'):
+                logger.error(f"Invalid content type: {image.content_type}")
+                raise HTTPException(status_code=400, detail="File must be an image")
+            
+            # If no content type, try to validate by reading the file
+            if not image.content_type:
+                logger.warning("No content type provided, will validate by file content")
+            
+            # Use enhanced face recognition with template system
+            from app.services.enhanced_recognition_service import get_enhanced_recognition_service
+            import cv2
+            import numpy as np
+            
+            enhanced_recognition_service = get_enhanced_recognition_service()
+            
+            # Convert uploaded image to OpenCV format
+            image_data = await image.read()
+            nparr = np.frombuffer(image_data, np.uint8)
+            camera_image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            
+            if camera_image is None:
+                raise HTTPException(status_code=400, detail="Invalid image format")
+            
+            # Save image to device-specific directory
+            device_upload_dir = get_device_upload_path(device_id, UPLOAD_DIR)
+            os.makedirs(device_upload_dir, exist_ok=True)
+            
+            timestamp = datetime.datetime.now()
+            timestamp_str = timestamp.strftime("%Y%m%d_%H%M%S_%f")
+            file_path = os.path.join(device_upload_dir, f"attendance_{device_id}_{timestamp_str}.jpg")
+            
+            with open(file_path, "wb") as f:
+                f.write(image_data)
+            
+            # Enhanced face recognition with template learning
+            recognition_result = await enhanced_recognition_service.recognize_face(db, camera_image)
         
         # DEBUG: Always get employee info if available
         employee_info = recognition_result.get("employee")
@@ -134,21 +157,42 @@ async def check_attendance(
         if not recognition_result.get("recognized", False):
             # Unknown person - only save image
             logger.warning(f"Face not recognized for device {device_id}, image saved at {file_path}")
-            return {
+            response_data = {
                 "success": False,
                 "message": recognition_result.get("message", "Person not recognized"),
                 "timestamp": timestamp.isoformat(),
                 "confidence": 0.0,
                 "image_path": file_path,
+                "device_id": device_id,
                 "recognition_details": {
                     "best_similarity": recognition_result.get("best_similarity", 0.0),
                     "confidence_level": "NONE"
                 }
             }
         
+        # Update device statistics
+        processing_time = time.time() - start_time
+        await device_manager.update_device_stats(device_id, processing_time)
+        
+        # Add performance metrics to response
+        if "response_data" not in locals():
+            response_data = {}
+        response_data["performance"] = {
+            "processing_time": round(processing_time, 3),
+            "device_id": device_id,
+            "timestamp": timestamp.isoformat()
+        }
+        
+        return response_data
+        
     except Exception as e:
-        logger.error(f"Error in attendance check: {e}")
+        logger.error(f"Error in attendance check for device {device_id}: {e}")
         db.rollback()
+        
+        # Still update device stats on error
+        processing_time = time.time() - start_time
+        await device_manager.update_device_stats(device_id, processing_time)
+        
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 @router.post("/upload")

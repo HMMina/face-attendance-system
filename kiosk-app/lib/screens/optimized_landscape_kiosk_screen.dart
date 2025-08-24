@@ -5,7 +5,7 @@ import 'package:flutter/services.dart';
 import 'dart:async';
 import '../widgets/optimized_camera_widget.dart';
 import '../services/api_service.dart';
-import '../services/discovery_service.dart';
+import '../services/discovery_service_fixed.dart';
 import '../services/enhanced_camera_service.dart';
 import '../config/device_config.dart';
 
