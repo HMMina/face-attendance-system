@@ -31,11 +31,14 @@ class DiscoveryService {
       return discoveredUrl;
     }
     
-    // Fallback to Android emulator localhost first, then regular localhost
+    // Fallback to common localhost and LAN IPs
     print('DiscoveryService: Discovery failed, trying fallback URLs...');
     const fallbackUrls = [
-      'http://10.0.2.2:8000',      // Android emulator
-      'http://localhost:8000',      // Regular localhost
+      'http://localhost:8000',       // Local development
+      'http://127.0.0.1:8000',      // Local loopback
+      'http://10.0.2.2:8000',       // Android emulator
+      'http://192.168.1.100:8000',  // Common LAN IP
+      'http://192.168.0.100:8000',  // Alternative LAN IP
     ];
     
     for (final fallbackUrl in fallbackUrls) {

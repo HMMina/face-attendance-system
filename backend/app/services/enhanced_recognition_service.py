@@ -3,6 +3,9 @@ Enhanced Face Recognition Service with Rolling Template System
 Integrates template manager for improved accuracy over time
 """
 import numpy as np
+import cv2
+import os
+from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 from sqlalchemy.orm import Session
 from app.models.face_template import FaceTemplate
@@ -34,14 +37,50 @@ class EnhancedRecognitionService:
         # Learning thresholds
         self.MIN_QUALITY_FOR_LEARNING = 0.8
         self.MIN_CONFIDENCE_FOR_LEARNING = 0.85
+        
+        # Uploads directory
+        self.uploads_dir = Path("data/uploads")
+        self.uploads_dir.mkdir(parents=True, exist_ok=True)
+    
+    def _save_recognition_image(self, image: np.ndarray, employee_id: str = None, 
+                               similarity: float = None) -> str:
+        """Save recognition image with timestamp and info"""
+        try:
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+            if employee_id and similarity:
+                filename = f"recognition_{employee_id}_{similarity:.3f}_{timestamp}.jpg"
+            else:
+                filename = f"recognition_unknown_{timestamp}.jpg"
+            
+            filepath = self.uploads_dir / filename
+            cv2.imwrite(str(filepath), image)
+            
+            logger.info(f"💾 Saved recognition image: {filename}")
+            return str(filepath)
+            
+        except Exception as e:
+            logger.error(f"Failed to save image: {e}")
+            return ""
     
     async def recognize_face(self, db: Session, face_image: np.ndarray, 
                            bbox: Optional[List[int]] = None) -> Dict:
         """
-        Recognize face using rolling template system
+        Recognize face using rolling template system with anti-spoofing check
         """
         try:
-            # Extract embedding from input face
+            # 1. Anti-spoofing check first
+            is_real = self.ai_service.anti_spoofing(face_image, bbox)
+            if not is_real:
+                logger.warning("🚨 SPOOF DETECTED - rejecting recognition attempt")
+                return {
+                    "success": False,
+                    "message": "Spoof attempt detected - please use a real face",
+                    "recognized": False
+                }
+            
+            logger.info("✅ Anti-spoofing passed - proceeding with recognition")
+            
+            # 2. Extract embedding from input face
             input_embedding = self.ai_service.extract_embedding(face_image, bbox)
             
             if input_embedding is None:
@@ -67,56 +106,82 @@ class EnhancedRecognitionService:
             )
             
             if not best_match:
+                # Save unrecognized face image
+                saved_image_path = self._save_recognition_image(face_image)
+                
                 return {
                     "success": True,
-                    "message": "No matching template found",
+                    "message": f"🚫 No matching template found | Recognition Threshold: {self.RECOGNITION_THRESHOLD} | Image saved: {os.path.basename(saved_image_path) if saved_image_path else 'Failed'}",
                     "recognized": False,
-                    "similarity_scores": []
+                    "similarity_scores": [],
+                    "saved_image": saved_image_path,
+                    "thresholds": {
+                        "recognition": self.RECOGNITION_THRESHOLD,
+                        "high_confidence": self.HIGH_CONFIDENCE_THRESHOLD,
+                        "very_high_confidence": self.VERY_HIGH_CONFIDENCE_THRESHOLD
+                    }
                 }
             
             template, similarity, employee = best_match
             
-            # Check recognition threshold
-            if similarity < self.RECOGNITION_THRESHOLD:
-                return {
-                    "success": True,
-                    "message": f"Similarity below threshold: {similarity:.3f}",
-                    "recognized": False,
-                    "best_similarity": similarity,
-                    "employee_id": employee.employee_id
-                }
+            # Save recognition image
+            saved_image_path = self._save_recognition_image(face_image, employee.employee_id, similarity)
             
-            # Update template performance - direct database update
-            template.match_count += 1
-            template.last_matched = datetime.datetime.utcnow()
-            if template.avg_match_confidence == 0.0:
-                template.avg_match_confidence = similarity
-            else:
-                template.avg_match_confidence = (
-                    (template.avg_match_confidence * (template.match_count - 1) + similarity) / template.match_count
+            # DEBUG: TEMPORARILY ALWAYS RETURN EMPLOYEE INFO (regardless of threshold)
+            logger.info(f"🔍 DEBUG: Best match - Employee {employee.employee_id} with similarity {similarity:.4f}")
+            logger.info(f"🎯 Thresholds - Recognition: {self.RECOGNITION_THRESHOLD}, High: {self.HIGH_CONFIDENCE_THRESHOLD}, Very High: {self.VERY_HIGH_CONFIDENCE_THRESHOLD}")
+            
+            # Determine if recognition meets threshold (but still return employee info)
+            meets_threshold = similarity >= self.RECOGNITION_THRESHOLD
+            recognition_status = "recognized" if meets_threshold else "low_similarity"
+            
+            if meets_threshold:
+                # Update template performance - direct database update
+                template.match_count += 1
+                template.last_matched = datetime.datetime.utcnow()
+                if template.avg_match_confidence == 0.0:
+                    template.avg_match_confidence = similarity
+                else:
+                    template.avg_match_confidence = (
+                        (template.avg_match_confidence * (template.match_count - 1) + similarity) / template.match_count
+                    )
+                db.commit()
+                
+                # Check if we should learn from this recognition
+                await self._consider_template_learning(
+                    db, employee.employee_id, face_image, similarity
                 )
-            db.commit()
-            
-            # Check if we should learn from this recognition
-            await self._consider_template_learning(
-                db, employee.employee_id, face_image, similarity
-            )
             
             # Get confidence level
             confidence_level = self._get_confidence_level(similarity)
             
+            # ALWAYS return employee information for debugging
             return {
                 "success": True,
-                "recognized": True,
+                "recognized": meets_threshold,  # True only if meets threshold
                 "employee_id": employee.employee_id,
-                "employee_name": employee.full_name,
+                "employee_name": employee.name,  # Use 'name' instead of 'full_name'
                 "similarity": similarity,
                 "confidence_level": confidence_level,
                 "template_id": template.id,
                 "image_id": template.image_id,
                 "is_primary": template.is_primary,
                 "template_source": template.created_from,
-                "message": f"Recognized with {confidence_level} confidence"
+                "saved_image": saved_image_path,
+                "thresholds": {
+                    "recognition": self.RECOGNITION_THRESHOLD,
+                    "high_confidence": self.HIGH_CONFIDENCE_THRESHOLD,
+                    "very_high_confidence": self.VERY_HIGH_CONFIDENCE_THRESHOLD
+                },
+                "message": f"🎯 {recognition_status} | Similarity: {similarity:.4f} | Recognition Threshold: {self.RECOGNITION_THRESHOLD} | High: {self.HIGH_CONFIDENCE_THRESHOLD} | Very High: {self.VERY_HIGH_CONFIDENCE_THRESHOLD} | Image saved: {os.path.basename(saved_image_path) if saved_image_path else 'Failed'}",
+                "employee": {  # Add full employee object for kiosk
+                    "employee_id": employee.employee_id,
+                    "name": employee.name,  # Use correct field name
+                    "department": employee.department or "N/A",
+                    "position": employee.position or "N/A", 
+                    "email": employee.email or "N/A",
+                    "avatar_url": f"/api/v1/employees/{employee.employee_id}/photo"  # Generate avatar URL
+                }
             }
             
         except Exception as e:
@@ -149,7 +214,9 @@ class EnhancedRecognitionService:
             
             for template in emp_templates:
                 template_embedding = np.array(template.embedding_vector)
-                similarity = self.ai_service.calculator.calculate(
+                # Use CosineSimilarityCalculator directly
+                from app.services.real_ai_service import CosineSimilarityCalculator
+                similarity = CosineSimilarityCalculator.calculate(
                     input_embedding, template_embedding
                 )
                 similarities.append((template, similarity))

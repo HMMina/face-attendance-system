@@ -39,7 +39,7 @@ class AIConfig:
     USE_FULL_IMAGE_FOR_SPOOF = True
     
     # Cosine Similarity settings
-    COSINE_SIMILARITY_THRESHOLD = 0.7
+    COSINE_SIMILARITY_THRESHOLD = 0.65  # Giảm từ 0.7 xuống 0.65 để dễ nhận diện
     NORMALIZE_EMBEDDINGS_BEFORE_COMPARISON = True
     USE_OPTIMIZED_COSINE_SIMILARITY = True
     
@@ -173,7 +173,7 @@ class CosineSimilarityCalculator:
         Args:
             query_embedding: Query embedding vector
             embeddings: List of (id, embedding) tuples
-            threshold: Minimum similarity threshold
+            threshold: Minimum similarity threshold (use 0.0 to get all matches)
             top_k: Number of top matches to return
             
         Returns:
@@ -192,16 +192,23 @@ class CosineSimilarityCalculator:
                 query_embedding, embedding_matrix, normalize=AIConfig.NORMALIZE_EMBEDDINGS_BEFORE_COMPARISON
             )
             
-            # Filter by threshold and get top-k
-            valid_indices = similarities >= threshold
-            valid_similarities = similarities[valid_indices]
-            valid_ids = [ids[i] for i in range(len(ids)) if valid_indices[i]]
-            
-            # Sort by similarity (descending)
-            sorted_pairs = sorted(zip(valid_ids, valid_similarities), 
-                                key=lambda x: x[1], reverse=True)
-            
-            return sorted_pairs[:top_k]
+            # If threshold is 0, return all matches (for debugging)
+            if threshold <= 0.0:
+                # Get ALL matches, sorted by similarity
+                all_pairs = list(zip(ids, similarities))
+                sorted_pairs = sorted(all_pairs, key=lambda x: x[1], reverse=True)
+                return sorted_pairs[:top_k]
+            else:
+                # Filter by threshold and get top-k
+                valid_indices = similarities >= threshold
+                valid_similarities = similarities[valid_indices]
+                valid_ids = [ids[i] for i in range(len(ids)) if valid_indices[i]]
+                
+                # Sort by similarity (descending)
+                sorted_pairs = sorted(zip(valid_ids, valid_similarities), 
+                                    key=lambda x: x[1], reverse=True)
+                
+                return sorted_pairs[:top_k]
             
         except Exception as e:
             import logging
@@ -547,10 +554,13 @@ class RealAIService:
                 real_confidence = probs.data[0].cpu().numpy()
                 spoof_confidence = probs.data[1].cpu().numpy() if len(probs.data) > 1 else 1 - real_confidence
                 
-                self.logger.debug(f"Anti-spoofing scores - Real: {real_confidence:.3f}, Spoof: {spoof_confidence:.3f}")
+                self.logger.info(f"🔍 Anti-spoofing scores - Real: {real_confidence:.3f}, Spoof: {spoof_confidence:.3f}")
                 
-                # Use a threshold to determine if face is real
-                return real_confidence > AIConfig.ANTI_SPOOF_THRESHOLD
+                # YOLOv11s-cls returns probabilities, so we compare directly
+                # Return True if real_confidence > spoof_confidence
+                is_real = real_confidence > spoof_confidence
+                self.logger.info(f"🔍 Anti-spoofing result: {'REAL' if is_real else 'SPOOF'}")
+                return is_real
             
             return True
             
@@ -625,7 +635,7 @@ class RealAIService:
         Args:
             query_embedding: 512-dim query vector (normalized)
             employee_embeddings: List of (employee_id, embedding) tuples
-            threshold: Minimum similarity threshold (uses config default if None)
+            threshold: Minimum similarity threshold (TEMPORARILY DISABLED for debugging)
             
         Returns: (employee_id, confidence) or (None, 0.0) if no match
         """
@@ -633,41 +643,58 @@ class RealAIService:
             if len(employee_embeddings) == 0:
                 return None, 0.0
             
-            # Use config threshold if not specified
-            if threshold is None:
-                threshold = AIConfig.COSINE_SIMILARITY_THRESHOLD
+            # TEMPORARILY DISABLE THRESHOLD - Always return best match for debugging
+            # threshold = AIConfig.COSINE_SIMILARITY_THRESHOLD
+            threshold = 0.0  # Accept any match above 0
             
-            # Use optimized cosine similarity calculator
+            self.logger.info(f"🔍 DEBUG: Matching against {len(employee_embeddings)} employees (threshold disabled)")
+            
+            # Find ALL matches, sorted by similarity
             if AIConfig.USE_OPTIMIZED_COSINE_SIMILARITY:
+                # Get ALL matches above 0 threshold, sort by best
                 matches = CosineSimilarityCalculator.find_best_matches(
                     query_embedding=query_embedding,
                     embeddings=employee_embeddings,
-                    threshold=threshold,
-                    top_k=1  # Only need the best match
+                    threshold=threshold,  # 0.0 means get all matches
+                    top_k=min(5, len(employee_embeddings))  # Get top 5 for debugging
                 )
                 
+                # Log all matches for debugging
+                for i, (emp_id, sim) in enumerate(matches):
+                    self.logger.info(f"🎯 Match #{i+1}: Employee {emp_id} = {sim:.4f}")
+                
                 if matches:
-                    return matches[0]  # (employee_id, similarity)
+                    best_match = matches[0]
+                    self.logger.info(f"✅ BEST MATCH: {best_match[0]} with similarity {best_match[1]:.4f}")
+                    return best_match  # (employee_id, similarity)
                 else:
+                    self.logger.warning("❌ No matches found at all")
                     return None, 0.0
             
             else:
-                # Fallback to original implementation
+                # Fallback: manual calculation with debugging
                 best_match = None
                 best_similarity = 0.0
+                all_similarities = []
                 
                 for employee_id, stored_embedding in employee_embeddings:
-                    # Use CosineSimilarityCalculator for consistency
                     similarity = CosineSimilarityCalculator.calculate(
                         query_embedding, 
                         stored_embedding,
                         normalize=AIConfig.NORMALIZE_EMBEDDINGS_BEFORE_COMPARISON
                     )
+                    all_similarities.append((employee_id, similarity))
                     
-                    if similarity > best_similarity and similarity >= threshold:
+                    if similarity > best_similarity:
                         best_similarity = similarity
                         best_match = employee_id
                 
+                # Sort and log all similarities for debugging
+                all_similarities.sort(key=lambda x: x[1], reverse=True)
+                for i, (emp_id, sim) in enumerate(all_similarities[:5]):
+                    self.logger.info(f"🎯 Match #{i+1}: Employee {emp_id} = {sim:.4f}")
+                
+                self.logger.info(f"✅ BEST MATCH: {best_match} with similarity {best_similarity:.4f}")
                 return best_match, best_similarity
             
         except Exception as e:

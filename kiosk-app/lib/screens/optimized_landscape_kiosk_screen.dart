@@ -40,7 +40,6 @@ class _OptimizedLandscapeKioskScreenState extends State<OptimizedLandscapeKioskS
   late Animation<double> _scaleAnimation;
   late Animation<Offset> _slideAnimation;
   late Animation<double> _fadeAnimation;
-  late Animation<Offset> _notificationSlideAnimation; // Slide animation cho notification
 
   @override
   void initState() {
@@ -91,14 +90,6 @@ class _OptimizedLandscapeKioskScreenState extends State<OptimizedLandscapeKioskS
       duration: const Duration(milliseconds: 400),
       vsync: this,
     );
-
-    _notificationSlideAnimation = Tween<Offset>(
-      begin: const Offset(1.0, 0.0), // Từ phải
-      end: Offset.zero, // Vào giữa
-    ).animate(CurvedAnimation(
-      parent: _notificationController,
-      curve: Curves.easeOutBack,
-    ));
   }
 
   void _setSystemUI() {
@@ -118,75 +109,6 @@ class _OptimizedLandscapeKioskScreenState extends State<OptimizedLandscapeKioskS
     _resultController.dispose();
     _notificationController.dispose();
     super.dispose();
-  }
-
-  // Mock data for testing - Enable this for testing without backend
-  static const bool useMockData = false; // Set to false for production
-  
-  Map<String, dynamic> _generateMockResult() {
-    List<Map<String, String>> mockEmployees = [
-      {
-        'name': 'Nguyễn Văn An',
-        'position': 'Nhân viên IT', 
-        'department': 'Công nghệ thông tin',
-        'employee_id': 'NV001'
-      },
-      {
-        'name': 'Trần Thị Bình',
-        'position': 'Kế toán',
-        'department': 'Tài chính',
-        'employee_id': 'NV002'
-      },
-      {
-        'name': 'Lê Hoàng Cường',
-        'position': 'Trưởng phòng',
-        'department': 'Kinh doanh',
-        'employee_id': 'NV003'
-      },
-      {
-        'name': 'Phạm Thị Dung',
-        'position': 'Thư ký',
-        'department': 'Hành chính',
-        'employee_id': 'NV004'
-      },
-      {
-        'name': 'Võ Minh Tuấn',
-        'position': 'Nhân viên Marketing',
-        'department': 'Marketing',
-        'employee_id': 'NV005'
-      }
-    ];
-
-    // Simulate success/failure (85% success rate)
-    final random = DateTime.now().millisecondsSinceEpoch;
-    final isSuccess = (random % 100) < 85;
-    
-    if (!isSuccess) {
-      return {
-        'success': false,
-        'message': 'Không nhận diện được khuôn mặt. Vui lòng thử lại.',
-        'timestamp': DateTime.now().toIso8601String(),
-      };
-    }
-
-    // Random select an employee for successful recognition
-    final selectedEmployee = mockEmployees[random % mockEmployees.length];
-    
-    // Use selected attendance type
-    final action = attendanceType.toLowerCase() == 'in' ? 'check_in' : 'check_out';
-    final actionText = attendanceType == 'IN' ? 'Vào làm' : 'Tan ca';
-    final now = DateTime.now();
-    
-    return {
-      'success': true,
-      'action': action,
-      'action_text': actionText,
-      'timestamp': now.toIso8601String(),
-      'formatted_time': '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}:${now.second.toString().padLeft(2, '0')}',
-      'confidence': 0.85 + (random % 15) / 100, // Random confidence 0.85-0.99
-      'employee': selectedEmployee,
-      'message': 'Chấm công $actionText thành công!'
-    };
   }
 
   Future<void> _onCapturePressed() async {
@@ -211,7 +133,8 @@ class _OptimizedLandscapeKioskScreenState extends State<OptimizedLandscapeKioskS
     if (imageBytes == null) {
       setState(() {
         isProcessing = false;
-        showResult = true;
+        showResult = false;
+        showNotification = true; // Hiển thị notification cho lỗi
         status = 'Lỗi chụp ảnh';
         result = {
           'success': false,
@@ -219,9 +142,12 @@ class _OptimizedLandscapeKioskScreenState extends State<OptimizedLandscapeKioskS
         };
       });
       
-      // Auto reset after 2 seconds on failure
+      // Show notification animation
+      _notificationController.forward();
+      
+      // Auto reset after 3 seconds on failure
       _autoResetTimer?.cancel();
-      _autoResetTimer = Timer(const Duration(seconds: 2), () {
+      _autoResetTimer = Timer(const Duration(seconds: 3), () {
         _hideNotification();
       });
       return;
@@ -232,26 +158,39 @@ class _OptimizedLandscapeKioskScreenState extends State<OptimizedLandscapeKioskS
       status = 'Đang xử lý nhận diện...';
     });
 
-    // Mock data for testing or real API call
-    Map<String, dynamic> response;
-    if (useMockData) {
-      // Simulate processing delay
-      await Future.delayed(const Duration(milliseconds: 1500));
-      response = _generateMockResult();
-    } else {
-      // Send to server for real recognition
-      response = await ApiService.sendAttendance(imageBytes, DeviceConfig.deviceId);
-    }
+    // Send to server for real recognition
+    final response = await ApiService.sendAttendance(imageBytes, DeviceConfig.deviceId);
     
     setState(() {
       result = response;
       isProcessing = false;
-      showNotification = true; // Hiển thị notification thay vì result panel
+      showResult = false; // Tắt result panel
+      showNotification = true; // Hiển thị notification overlay toàn màn hình
       countdown = 5; // Reset countdown
-      status = response['success'] ? 'Chấm công thành công!' : 'Không nhận diện được';
+      
+      // Set status message based on response
+      if (response['success']) {
+        status = response['message'] ?? 'Chấm công thành công!';
+      } else {
+        status = response['message'] ?? 'Không nhận diện được';
+      }
     });
 
-    // Show notification animation
+    // Debug log để kiểm tra dữ liệu
+    print('=== ATTENDANCE RESPONSE ===');
+    print('Success: ${response['success']}');
+    print('Message: ${response['message']}');
+    if (response['success'] && response['employee'] != null) {
+      print('Employee data: ${response['employee']}');
+      print('Employee name: ${response['employee']['name']}');
+      print('Employee position: ${response['employee']['position']}');
+      print('Employee department: ${response['employee']['department']}');
+    } else {
+      print('No employee data or failed recognition');
+    }
+    print('=== END RESPONSE ===');
+
+    // Show notification overlay animation
     _notificationController.forward();
 
     // Start countdown timer
@@ -421,12 +360,16 @@ class _OptimizedLandscapeKioskScreenState extends State<OptimizedLandscapeKioskS
                                   size: 24,
                                 ),
                               const SizedBox(width: 12),
-                              Text(
-                                status,
-                                style: TextStyle(
-                                  color: isProcessing ? Colors.white : Colors.white70, // Mờ hơn khi sẵn sàng
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w500,
+                              Flexible(
+                                child: Text(
+                                  status,
+                                  style: TextStyle(
+                                    color: isProcessing ? Colors.white : Colors.white70, // Mờ hơn khi sẵn sàng
+                                    fontSize: 18,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                  overflow: TextOverflow.ellipsis,
+                                  maxLines: 2,
                                 ),
                               ),
                             ],
@@ -628,11 +571,13 @@ class _OptimizedLandscapeKioskScreenState extends State<OptimizedLandscapeKioskS
       ),
     ),
         
-        // Notification overlay
+        // Notification overlay - hiển thị trên toàn bộ màn hình
         if (showNotification)
-          SlideTransition(
-            position: _notificationSlideAnimation,
-            child: _buildNotificationOverlay(),
+          Positioned.fill(
+            child: FadeTransition(
+              opacity: _notificationController,
+              child: _buildNotificationOverlay(),
+            ),
           ),
       ],
     );
@@ -642,62 +587,65 @@ class _OptimizedLandscapeKioskScreenState extends State<OptimizedLandscapeKioskS
     if (result == null) return const SizedBox.shrink();
     
     final isSuccess = result!['success'] ?? false;
+    final hasEmployee = result!['employee'] != null;
     
-    return Positioned.fill(
-      child: Container(
-        color: Colors.black.withOpacity(0.8),
-        child: Center(
-          child: Container(
-            width: MediaQuery.of(context).size.width * 0.7,
-            margin: const EdgeInsets.all(40),
-            padding: const EdgeInsets.all(30),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(20),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.3),
-                  blurRadius: 20,
-                  spreadRadius: 5,
-                ),
-              ],
-            ),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+    // Chỉ coi là thành công thực sự khi có dữ liệu employee
+    final isRealSuccess = isSuccess && hasEmployee;
+    
+    return Container(
+      color: Colors.black.withOpacity(0.9), // Tăng opacity để che toàn bộ
+      child: Center(
+        child: Container(
+          width: MediaQuery.of(context).size.width * 0.8, // Tăng kích thước
+          margin: const EdgeInsets.all(40),
+          padding: const EdgeInsets.all(30),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(20),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.5),
+                blurRadius: 30,
+                spreadRadius: 10,
+              ),
+            ],
+          ),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+              // Compact header với icon và message
+              Row(
                 children: [
-                // Compact header với icon và message
-                Row(
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
-                      decoration: BoxDecoration(
-                        color: isSuccess ? Colors.green[100] : Colors.red[100],
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        isSuccess ? Icons.check_circle : Icons.error,
-                        size: 40,
-                        color: isSuccess ? Colors.green[600] : Colors.red[600],
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: isRealSuccess ? Colors.green[100] : Colors.red[100],
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      isRealSuccess ? Icons.check_circle : Icons.error,
+                      size: 40,
+                      color: isRealSuccess ? Colors.green[600] : Colors.red[600],
+                    ),
+                  ),
+                  
+                  const SizedBox(width: 16),
+                  
+                  Expanded(
+                    child: Text(
+                      hasEmployee ? 'Chấm công thành công!' : (result!['message'] ?? 'Không nhận diện được'),
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                        color: isRealSuccess ? Colors.green[700] : Colors.red[700],
                       ),
                     ),
-                    
-                    const SizedBox(width: 16),
-                    
-                    Expanded(
-                      child: Text(
-                        result!['message'] ?? 'Thông báo',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.bold,
-                          color: isSuccess ? Colors.green[700] : Colors.red[700],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
+              ),
                 
-                if (isSuccess && result!['employee'] != null) ...[
+                if (isRealSuccess && hasEmployee) ...[
                   const SizedBox(height: 16),
                   
                   // Employee info compact
@@ -740,20 +688,41 @@ class _OptimizedLandscapeKioskScreenState extends State<OptimizedLandscapeKioskS
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
+                                  // Họ tên
                                   Text(
-                                    result!['employee']['name'] ?? '',
+                                    result!['employee']['name'] ?? 'N/A',
                                     style: const TextStyle(
-                                      fontSize: 18,
+                                      fontSize: 22,
                                       fontWeight: FontWeight.bold,
                                       color: Colors.black87,
                                     ),
                                   ),
-                                  const SizedBox(height: 4),
+                                  const SizedBox(height: 8),
+                                  // Employee ID
                                   Text(
-                                    '${result!['employee']['position']} - ${result!['employee']['department']}',
+                                    'Mã NV: ${result!['employee']['employee_id'] ?? 'N/A'}',
                                     style: TextStyle(
-                                      fontSize: 14,
-                                      color: Colors.grey[600],
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.w500,
+                                      color: Colors.blue[700],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  // Phòng ban
+                                  Text(
+                                    'Phòng ban: ${result!['employee']['department'] ?? 'N/A'}',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      color: Colors.grey[700],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 4),
+                                  // Chức vụ
+                                  Text(
+                                    'Chức vụ: ${result!['employee']['position'] ?? 'N/A'}',
+                                    style: TextStyle(
+                                      fontSize: 15,
+                                      color: Colors.grey[700],
                                     ),
                                   ),
                                 ],
@@ -811,6 +780,59 @@ class _OptimizedLandscapeKioskScreenState extends State<OptimizedLandscapeKioskS
                   ),
                 ],
                 
+                // Thông báo khi không nhận diện được (không có employee data)
+                if (!hasEmployee) ...[
+                  const SizedBox(height: 16),
+                  Container(
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.orange[50],
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.orange[200]!),
+                    ),
+                    child: Column(
+                      children: [
+                        Icon(
+                          Icons.face_retouching_off,
+                          size: 60,
+                          color: Colors.orange[600],
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Không nhận diện được khuôn mặt',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.orange[700],
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Vui lòng đảm bảo khuôn mặt rõ nét và thử lại',
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.orange[600],
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                        if (result!['message'] != null) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            'Chi tiết: ${result!['message']}',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.grey[600],
+                              fontStyle: FontStyle.italic,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+                
                 const SizedBox(height: 16),
                 
                 // Countdown compact
@@ -832,7 +854,6 @@ class _OptimizedLandscapeKioskScreenState extends State<OptimizedLandscapeKioskS
                 ),
               ],
             ),
-          ),
           ),
         ),
       ),
@@ -1041,9 +1062,9 @@ class _OptimizedLandscapeKioskScreenState extends State<OptimizedLandscapeKioskS
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(color: Colors.grey[300]!),
               ),
-              child: const Text(
-                'Tự động quay lại sau 4 giây...',
-                style: TextStyle(
+              child: Text(
+                'Tự động quay lại sau $countdown giây...',
+                style: const TextStyle(
                   fontSize: 12,
                   color: Colors.black54,
                 ),

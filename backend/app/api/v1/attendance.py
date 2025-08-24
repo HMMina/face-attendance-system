@@ -66,85 +66,85 @@ async def check_attendance(
         # Enhanced face recognition with template learning
         recognition_result = await enhanced_recognition_service.recognize_face(db, camera_image)
         
-        if not recognition_result.get("recognized", False):
-            # Unknown person - save as unrecognized attendance
-            attendance = Attendance(
-                employee_id="UNKNOWN",
-                device_id=device_id,
-                confidence=0.0,
-                image_path=file_path,
-                timestamp=timestamp,
-                action_type="UNRECOGNIZED"
-            )
-            db.add(attendance)
-            db.commit()
-            db.refresh(attendance)
+        # DEBUG: Always get employee info if available
+        employee_info = recognition_result.get("employee")
+        employee_id = recognition_result.get("employee_id")
+        similarity = recognition_result.get("similarity", 0.0)
+        
+        # Check if we have employee data to return
+        if employee_info and employee_id:
+            # We found a match - determine if it's good enough for attendance logging
+            meets_threshold = recognition_result.get("recognized", False)
             
+            if meets_threshold:
+                # High confidence - log attendance
+                logger.info(f"✅ High confidence recognition: {employee_id} with similarity {similarity:.3f}")
+                
+                # Get full employee information for attendance logging
+                from app.services.employee_service import get_employee
+                employee = get_employee(db, employee_id)
+                
+                # Save attendance record (remove fields not in model)
+                attendance = Attendance(
+                    employee_id=employee_id,
+                    device_id=device_id,
+                    confidence=similarity,
+                    timestamp=timestamp,
+                    image_path=file_path,
+                    action_type="CHECK_IN"  # Use standard field
+                )
+                db.add(attendance)
+                db.commit()
+                db.refresh(attendance)
+                
+                return {
+                    "success": True,
+                    "message": "Chấm công thành công!",
+                    "employee": employee_info,
+                    "attendance_id": attendance.id,
+                    "timestamp": timestamp.isoformat(),
+                    "formatted_time": timestamp.strftime("%H:%M - %d/%m/%Y"),
+                    "confidence": similarity,
+                    "similarity": similarity,
+                    "recognition_details": {
+                        "confidence_level": recognition_result.get("confidence_level", "HIGH"),
+                        "template_id": recognition_result.get("template_id"),
+                        "is_primary": recognition_result.get("is_primary", False)
+                    }
+                }
+            else:
+                # Low confidence - return employee info but don't log attendance
+                logger.info(f"🔍 DEBUG: Low confidence match: {employee_id} with similarity {similarity:.3f}")
+                return {
+                    "success": True,  # Still success for debugging
+                    "message": f"Similarity below threshold: {similarity:.3f}",
+                    "employee": employee_info,  # Still return employee info
+                    "timestamp": timestamp.isoformat(),
+                    "formatted_time": timestamp.strftime("%H:%M - %d/%m/%Y"),
+                    "confidence": similarity,
+                    "similarity": similarity,
+                    "recognition_details": {
+                        "confidence_level": recognition_result.get("confidence_level", "LOW"),
+                        "best_similarity": similarity,
+                        "threshold_met": False
+                    }
+                }
+        
+        # No match found at all
+        if not recognition_result.get("recognized", False):
+            # Unknown person - only save image
+            logger.warning(f"Face not recognized for device {device_id}, image saved at {file_path}")
             return {
                 "success": False,
                 "message": recognition_result.get("message", "Person not recognized"),
-                "attendance_id": attendance.id,
                 "timestamp": timestamp.isoformat(),
                 "confidence": 0.0,
+                "image_path": file_path,
                 "recognition_details": {
                     "best_similarity": recognition_result.get("best_similarity", 0.0),
-                    "confidence_level": "LOW"
+                    "confidence_level": "NONE"
                 }
             }
-        
-        # Recognized person - get employee details
-        employee_id = recognition_result.get("employee_id")
-        employee_name = recognition_result.get("employee_name", "Unknown")
-        confidence = recognition_result.get("similarity", 0.0)
-        confidence_level = recognition_result.get("confidence_level", "MEDIUM")
-        template_id = recognition_result.get("template_id")
-        template_order = recognition_result.get("template_order")
-        
-        # Get full employee information for response
-        from app.services.employee_service import get_employee
-        employee = get_employee(db, employee_id)
-        
-        # Save attendance record with enhanced info
-        attendance = Attendance(
-            employee_id=employee_id,
-            device_id=device_id,
-            confidence=confidence,
-            image_path=file_path,
-            timestamp=timestamp,
-            action_type="CHECK_IN"  # Default action type
-        )
-        db.add(attendance)
-        db.commit()
-        db.refresh(attendance)
-        
-        logger.info(f"Enhanced attendance recorded for employee {employee_id} from device {device_id} "
-                   f"with confidence {confidence:.3f} using template {template_order}")
-        
-        # Build response for kiosk app
-        response = {
-            "success": True,
-            "employee_id": employee_id,
-            "employee_name": employee_name,
-            "confidence": confidence,
-            "timestamp": timestamp.isoformat(),
-            "formatted_time": timestamp.strftime("%d/%m/%Y %H:%M:%S"),
-            "action": "check_in",
-            "action_text": "Vào làm",
-            "attendance_id": attendance.id,
-            "message": f"Chấm công thành công! Chào mừng {employee_name}",
-        }
-        
-        # Add employee details if available
-        if employee:
-            response["employee"] = {
-                "name": employee.name,
-                "employee_id": employee.employee_id,
-                "department": employee.department,
-                "position": employee.position,
-                "avatar_url": f"/api/v1/employees/{employee_id}/photo"
-            }
-        
-        return response
         
     except Exception as e:
         logger.error(f"Error in attendance check: {e}")
@@ -162,9 +162,11 @@ def upload_attendance(
     try:
         # Lưu ảnh gốc
         os.makedirs(UPLOAD_DIR, exist_ok=True)
-        file_path = os.path.join(UPLOAD_DIR, f"{employee_id}_{datetime.datetime.now().isoformat()}.jpg")
+        timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        file_path = os.path.join(UPLOAD_DIR, f"{employee_id}_{timestamp_str}.jpg")
+        image_data = image.file.read() if hasattr(image.file, 'read') else image.read()
         with open(file_path, "wb") as f:
-            f.write(image.file.read())
+            f.write(image_data)
         # Lưu attendance
         att = Attendance(
             employee_id=employee_id,

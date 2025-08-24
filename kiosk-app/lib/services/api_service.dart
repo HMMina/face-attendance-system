@@ -62,8 +62,12 @@ class ApiService {
           'employee_name': data['employee_name'] ?? 'Nhân viên',
           'confidence': data['confidence'] ?? 0.0,
           'timestamp': data['timestamp'] ?? DateTime.now().toIso8601String(),
-          'action_type': data['action_type'] ?? 'checkin',
+          'formatted_time': data['formatted_time'] ?? DateTime.now().toString().substring(0, 19),
+          'action': data['action'] ?? 'check_in',
+          'action_text': data['action_text'] ?? 'Vào làm',
           'device_id': data['device_id'] ?? deviceId,
+          'message': data['message'] ?? 'Chấm công thành công!',
+          'employee': data['employee'], // Pass through employee object from backend
         };
       } else {
         final errorData = json.decode(responseData);
