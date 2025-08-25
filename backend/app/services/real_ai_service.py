@@ -34,8 +34,7 @@ class AIConfig:
     EMBEDDING_CACHE_SIZE = 1000
     FACE_CROP_PADDING = 20
     
-    # Anti-spoofing settings
-    ANTI_SPOOF_THRESHOLD = 0.5
+    # Anti-spoofing settings - using direct classification comparison
     USE_FULL_IMAGE_FOR_SPOOF = True
     
     # Cosine Similarity settings
@@ -793,7 +792,7 @@ class RealAIService:
                 quality_score *= 0.8
                 quality_issues.append("Low resolution face")
             
-            # 5. Anti-spoofing check (if available)
+            # 5. Anti-spoofing check (REQUIRED FOR SECURITY)
             is_real = True
             if self.anti_spoof_model is not None:
                 is_real = self.anti_spoofing(image, bbox)
@@ -807,7 +806,16 @@ class RealAIService:
                         "quality_score": quality_score
                     }
             else:
-                self.logger.warning("Anti-spoofing disabled - skipping spoof detection")
+                # Anti-spoofing model not loaded - this is a security risk
+                self.logger.error("⚠️ SECURITY RISK: Anti-spoofing model not loaded!")
+                return {
+                    "face_detected": True,
+                    "is_real": False,
+                    "message": "Anti-spoofing system not available - please contact administrator",
+                    "success": False,
+                    "bbox": bbox,
+                    "quality_score": quality_score
+                }
             
             # 6. Extract embedding from face crop for better consistency
             embedding = self.extract_embedding(image, bbox)
