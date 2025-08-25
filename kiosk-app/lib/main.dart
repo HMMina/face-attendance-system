@@ -2,10 +2,25 @@
 /// Chế độ kiosk, auto-discovery server, chụp ảnh, gửi ảnh lên server
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'screens/optimized_landscape_kiosk_screen.dart';
+import 'config/device_config.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  
+  // Set device ID for web (since environment variables don't work on web)
+  if (kIsWeb) {
+    // Check URL parameters for device_id
+    final uri = Uri.base;
+    final deviceIdParam = uri.queryParameters['device_id'];
+    if (deviceIdParam != null && deviceIdParam.isNotEmpty) {
+      DeviceConfig.setDeviceId(deviceIdParam);
+    } else {
+      // Default device ID for web testing
+      DeviceConfig.setDeviceId('KIOSK001');
+    }
+  }
   
   // Set system UI for kiosk mode
   SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);

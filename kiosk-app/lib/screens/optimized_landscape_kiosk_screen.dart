@@ -7,6 +7,7 @@ import '../widgets/optimized_camera_widget.dart';
 import '../services/api_service.dart';
 import '../services/discovery_service_fixed.dart';
 import '../services/enhanced_camera_service.dart';
+import '../services/device_service.dart';
 import '../config/device_config.dart';
 
 class OptimizedLandscapeKioskScreen extends StatefulWidget {
@@ -46,6 +47,32 @@ class _OptimizedLandscapeKioskScreenState extends State<OptimizedLandscapeKioskS
     super.initState();
     _initAnimations();
     _setSystemUI();
+    _initializeDevice();
+  }
+
+  Future<void> _initializeDevice() async {
+    try {
+      print('Initializing device ${DeviceConfig.deviceId}...');
+      
+      // Register device with server
+      final success = await DeviceService.initializeDevice();
+      if (success) {
+        print('Device initialized successfully');
+        // Start heartbeat
+        _startHeartbeat();
+      } else {
+        print('Device initialization failed');
+      }
+    } catch (e) {
+      print('Device initialization error: $e');
+    }
+  }
+
+  void _startHeartbeat() {
+    // Send heartbeat every 30 seconds
+    Timer.periodic(const Duration(seconds: 30), (timer) async {
+      await DeviceService.sendHeartbeat();
+    });
   }
 
   void _initAnimations() {
