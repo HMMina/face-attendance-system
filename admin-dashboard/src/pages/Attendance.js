@@ -36,7 +36,8 @@ import {
   Home as HomeIcon,
   People as PeopleIcon,
   History as HistoryIcon,
-  Assessment as ReportsIcon
+  Assessment as ReportsIcon,
+  Devices as DevicesIcon
 } from '@mui/icons-material';
 import { Link } from 'react-router-dom';
 import { getAllAttendance, getEmployees } from '../services/api';
@@ -287,8 +288,8 @@ export default function Attendance() {
           <Button color="inherit" component={Link} to="/employees" startIcon={<PeopleIcon />}>
             Nhân viên
           </Button>
-          <Button color="inherit" component={Link} to="/attendance" startIcon={<HistoryIcon />}>
-            Chấm công
+          <Button color="inherit" component={Link} to="/devices" startIcon={<DevicesIcon />}>
+            Thiết bị
           </Button>
           <Button color="inherit" component={Link} to="/reports" startIcon={<ReportsIcon />}>
             Báo cáo
