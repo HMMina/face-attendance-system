@@ -24,6 +24,7 @@ async def check_attendance(
     request: Request,
     image: UploadFile = File(...),
     device_id: str = Form(...),
+    attendance_type: str = Form(default="IN"),  # Frontend gửi IN/OUT
     db: Session = Depends(get_db),
     device_manager: DeviceManager = Depends(get_device_manager)
 ):
@@ -47,6 +48,7 @@ async def check_attendance(
         async with device_lock:
             # Debug logging
             logger.info(f"🎯 Processing request from device {device_id} at {client_ip}")
+            logger.info(f"📝 Attendance type received: {attendance_type}")
             logger.info(f"Received file: {image.filename}")
             logger.info(f"Content type: {image.content_type}")
             logger.info(f"File size: {image.size if hasattr(image, 'size') else 'Unknown'}")
@@ -107,6 +109,9 @@ async def check_attendance(
                 from app.services.employee_service import get_employee
                 employee = get_employee(db, employee_id)
                 
+                # Convert frontend attendance_type (IN/OUT) to database action_type (CHECK_IN/CHECK_OUT)
+                action_type = "CHECK_IN" if attendance_type.upper() == "IN" else "CHECK_OUT"
+                
                 # Save attendance record (remove fields not in model)
                 attendance = Attendance(
                     employee_id=employee_id,
@@ -114,7 +119,7 @@ async def check_attendance(
                     confidence=similarity,
                     timestamp=timestamp,
                     image_path=file_path,
-                    action_type="CHECK_IN"  # Use standard field
+                    action_type=action_type  # Use converted action_type
                 )
                 db.add(attendance)
                 db.commit()

@@ -186,7 +186,7 @@ class _OptimizedLandscapeKioskScreenState extends State<OptimizedLandscapeKioskS
     });
 
     // Send to server for real recognition
-    final response = await ApiService.sendAttendance(imageBytes, DeviceConfig.deviceId);
+    final response = await ApiService.sendAttendance(imageBytes, DeviceConfig.deviceId, attendanceType: attendanceType);
     
     setState(() {
       result = response;

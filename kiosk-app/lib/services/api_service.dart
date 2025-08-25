@@ -12,7 +12,8 @@ class ApiService {
   /// Gửi ảnh chấm công lên server
   static Future<Map<String, dynamic>> sendAttendance(
     Uint8List imageBytes, 
-    String deviceId
+    String deviceId,
+    {String attendanceType = 'IN'}  // Thêm tham số attendance type
   ) async {
     try {
       // Get server URL from discovery service
@@ -29,6 +30,7 @@ class ApiService {
       print('ApiService: Sending image to $serverUrl');
       print('ApiService: Image size: ${imageBytes.length} bytes');
       print('ApiService: Device ID: $deviceId');
+      print('ApiService: Attendance Type: $attendanceType');
 
       // Prepare multipart request
       final uri = Uri.parse('$serverUrl/api/v1/attendance/check');
@@ -36,6 +38,9 @@ class ApiService {
       
       // Add device ID
       request.fields['device_id'] = deviceId;
+      
+      // Add attendance type
+      request.fields['attendance_type'] = attendanceType;
       
       // Add image file
       request.files.add(

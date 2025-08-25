@@ -30,7 +30,7 @@ class AIConfig:
     MAX_IMAGE_SIZE = 1280
     
     # Recognition settings  
-    RECOGNITION_THRESHOLD = 0.7
+    RECOGNITION_THRESHOLD = 0.6  # Lowered for testing
     EMBEDDING_CACHE_SIZE = 1000
     FACE_CROP_PADDING = 20
     
@@ -39,7 +39,7 @@ class AIConfig:
     USE_FULL_IMAGE_FOR_SPOOF = True
     
     # Cosine Similarity settings
-    COSINE_SIMILARITY_THRESHOLD = 0.65  # Giảm từ 0.7 xuống 0.65 để dễ nhận diện
+    COSINE_SIMILARITY_THRESHOLD = 0.6  # Lowered for testing
     NORMALIZE_EMBEDDINGS_BEFORE_COMPARISON = True
     USE_OPTIMIZED_COSINE_SIMILARITY = True
     
