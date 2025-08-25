@@ -98,12 +98,25 @@ export default function Attendance() {
             new Date(a.timestamp) - new Date(b.timestamp)
           );
           
-          // Find CHECK_IN and CHECK_OUT records
-          const checkInRecord = sortedRecords.find(record => record.action_type === 'CHECK_IN');
-          const checkOutRecord = sortedRecords.find(record => record.action_type === 'CHECK_OUT');
+          // Improved logic: Find FIRST CHECK_IN and LAST CHECK_OUT for the day
+          const checkInRecords = sortedRecords.filter(record => record.action_type === 'CHECK_IN');
+          const checkOutRecords = sortedRecords.filter(record => record.action_type === 'CHECK_OUT');
+          
+          const checkInRecord = checkInRecords.length > 0 ? checkInRecords[0] : null; // First CHECK_IN
+          const checkOutRecord = checkOutRecords.length > 0 ? checkOutRecords[checkOutRecords.length - 1] : null; // Last CHECK_OUT
           
           const checkInTime = checkInRecord ? new Date(checkInRecord.timestamp) : null;
           const checkOutTime = checkOutRecord ? new Date(checkOutRecord.timestamp) : null;
+          
+          // Debug logging for attendance logic
+          if (group.records.length > 2) {
+            console.log(`🕐 DEBUG: Employee ${group.employee_id} on ${group.date}:`);
+            console.log(`   Records count: ${group.records.length}`);
+            console.log(`   CHECK_IN count: ${checkInRecords.length}`);
+            console.log(`   CHECK_OUT count: ${checkOutRecords.length}`);
+            console.log(`   First CHECK_IN: ${checkInRecord?.timestamp}`);
+            console.log(`   Last CHECK_OUT: ${checkOutRecord?.timestamp}`);
+          }
           
           // Calculate working hours
           let hoursWorked = '0.0';
