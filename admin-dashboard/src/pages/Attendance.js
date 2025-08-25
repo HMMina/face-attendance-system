@@ -139,6 +139,7 @@ export default function Attendance() {
             date: group.date,
             checkIn: checkInTime ? formatTimeFromTimestamp(checkInRecord.timestamp) : '',
             checkOut: checkOutTime ? formatTimeFromTimestamp(checkOutRecord.timestamp) : '',
+            deviceId: checkInRecord ? checkInRecord.device_id : (checkOutRecord ? checkOutRecord.device_id : 'N/A'),
             status: status,
             hoursWorked: hoursWorked
           };
@@ -213,7 +214,7 @@ export default function Attendance() {
   const absentToday = totalEmployees > 0 ? Math.max(0, totalEmployees - todayRecords.length) : 0;
 
   const exportToCSV = () => {
-    const headers = ['Tên nhân viên', 'Ngày', 'Giờ vào', 'Giờ ra', 'Trạng thái', 'Giờ làm việc'];
+    const headers = ['Tên nhân viên', 'Ngày', 'Giờ vào', 'Giờ ra', 'Thiết bị', 'Giờ làm việc'];
     const csvContent = [
       headers.join(','),
       ...attendanceData.map(row => [
@@ -221,7 +222,7 @@ export default function Attendance() {
         row.date,
         row.checkIn,
         row.checkOut,
-        row.status,
+        row.deviceId || 'N/A',
         row.hoursWorked
       ].join(','))
     ].join('\n');
@@ -494,7 +495,7 @@ export default function Attendance() {
                     <TableCell>Giờ vào</TableCell>
                     <TableCell>Giờ ra</TableCell>
                     <TableCell>Giờ làm việc</TableCell>
-                    <TableCell>Trạng thái</TableCell>
+                    <TableCell>Thiết bị</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -525,13 +526,7 @@ export default function Attendance() {
                       <TableCell>{row.checkIn}</TableCell>
                       <TableCell>{row.checkOut}</TableCell>
                       <TableCell>{row.hoursWorked}h</TableCell>
-                      <TableCell>
-                        <Chip
-                          label={getStatusText(row.status)}
-                          color={getStatusColor(row.status)}
-                          size="small"
-                        />
-                      </TableCell>
+                      <TableCell>{row.deviceId || 'N/A'}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

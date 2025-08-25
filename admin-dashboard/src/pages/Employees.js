@@ -33,7 +33,8 @@ import {
   Alert,
   Snackbar,
   Avatar,
-  Badge
+  Badge,
+  Tooltip
 } from '@mui/material';
 import {
   People as PeopleIcon,
@@ -49,11 +50,12 @@ import {
   PhotoCamera as PhotoCameraIcon,
   CloudUpload as CloudUploadIcon
 } from '@mui/icons-material';
-import { getEmployees, getDepartments, addEmployee, addEmployeeWithPhoto, updateEmployee, uploadEmployeePhoto, uploadMultiplePhotos, deleteEmployee, api } from '../services/api';
+import { getEmployees, getDepartments, addEmployee, addEmployeeWithPhoto, updateEmployee, uploadEmployeePhoto, uploadMultiplePhotos, deleteEmployee, getAllAttendance, api } from '../services/api';
 
 export default function Employees() {
   const [employees, setEmployees] = useState([]);
   const [departments, setDepartments] = useState([]); // Ensure it's always an array
+  const [attendanceData, setAttendanceData] = useState([]); // New: attendance data for activity status
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -174,9 +176,119 @@ export default function Employees() {
     }
   };
 
+  const fetchAttendanceData = async () => {
+    try {
+      const result = await getAllAttendance();
+      if (result.success) {
+        setAttendanceData(result.data || []);
+        console.log(`🔄 Attendance data refreshed: ${(result.data || []).length} records at ${new Date().toLocaleTimeString()}`);
+      } else {
+        console.error('Failed to fetch attendance data:', result.error);
+        setAttendanceData([]);
+      }
+    } catch (err) {
+      console.error('Error fetching attendance data:', err);
+      setAttendanceData([]);
+    }
+  };
+
+  // Calculate employee activity status based on today's attendance
+  const getEmployeeActivityStatus = (employeeId) => {
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    
+    // Get today's attendance records for this employee
+    const todayRecords = attendanceData.filter(record => {
+      const recordDate = new Date(record.timestamp).toISOString().split('T')[0];
+      return record.employee_id === employeeId && recordDate === today;
+    });
+
+    console.log(`🔍 Checking status for ${employeeId}: found ${todayRecords.length} records today from ${attendanceData.length} total`);
+    if (todayRecords.length > 0) {
+      console.log(`📋 Today's records for ${employeeId}:`, todayRecords);
+    }
+
+    if (todayRecords.length === 0) {
+      return false; // No attendance today = inactive
+    }
+
+    // Sort by timestamp to get chronological order
+    const sortedRecords = todayRecords.sort((a, b) => 
+      new Date(a.timestamp) - new Date(b.timestamp)
+    );
+
+    // Get the last record to determine current status
+    const lastRecord = sortedRecords[sortedRecords.length - 1];
+    
+    // If last action was CHECK_IN, employee is currently active
+    // If last action was CHECK_OUT, employee is currently inactive
+    const isActive = lastRecord.action_type === 'CHECK_IN';
+    console.log(`👤 ${employeeId} status: ${isActive ? 'ACTIVE' : 'INACTIVE'} (last action: ${lastRecord.action_type})`);
+    return isActive;
+  };
+
+  // Get status text for display
+  const getActivityStatusText = (employeeId) => {
+    return getEmployeeActivityStatus(employeeId) ? 'Đang hoạt động' : 'Không hoạt động';
+  };
+
+  // Get status color for chip display
+  const getActivityStatusColor = (employeeId) => {
+    return getEmployeeActivityStatus(employeeId) ? 'success' : 'warning';
+  };
+
+  // Get detailed status tooltip
+  const getActivityStatusTooltip = (employeeId) => {
+    const today = new Date().toISOString().split('T')[0];
+    const todayRecords = attendanceData.filter(record => {
+      const recordDate = new Date(record.timestamp).toISOString().split('T')[0];
+      return record.employee_id === employeeId && recordDate === today;
+    });
+
+    if (todayRecords.length === 0) {
+      return 'Chưa chấm công hôm nay';
+    }
+
+    const sortedRecords = todayRecords.sort((a, b) => 
+      new Date(a.timestamp) - new Date(b.timestamp)
+    );
+    
+    const lastRecord = sortedRecords[sortedRecords.length - 1];
+    const lastTime = new Date(lastRecord.timestamp).toLocaleTimeString('vi-VN', {
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+    
+    if (lastRecord.action_type === 'CHECK_IN') {
+      return `Đã vào lúc ${lastTime} (chưa ra)`;
+    } else {
+      return `Đã ra lúc ${lastTime}`;
+    }
+  };
+
+  // Calculate statistics based on real attendance data
+  const getActivityStats = () => {
+    if (employees.length === 0) {
+      return { active: 0, inactive: 0 };
+    }
+
+    const active = employees.filter(emp => getEmployeeActivityStatus(emp.employee_id)).length;
+    const inactive = employees.length - active;
+
+    // Debug logging
+    console.log(`📊 Activity Stats - Total: ${employees.length}, Active: ${active}, Inactive: ${inactive}`);
+    console.log(`📊 Attendance records: ${attendanceData.length}`);
+
+    return { active, inactive };
+  };
+
   useEffect(() => {
     fetchEmployees();
     fetchDepartments();
+    fetchAttendanceData();
+    
+    // Refresh attendance data every 10 seconds for real-time activity status (reduced for testing)
+    const interval = setInterval(fetchAttendanceData, 10000);
+    return () => clearInterval(interval);
   }, []);
 
   // Filter employees based on search and department
@@ -197,7 +309,7 @@ export default function Employees() {
     }
     
     setFilteredEmployees(filtered);
-  }, [employees, searchText, filterDepartment]);
+  }, [employees, searchText, filterDepartment, attendanceData]);
 
   const handleOpenDialog = (employee = null) => {
     console.log('Opening dialog, current departments:', departments); // Debug log
@@ -603,7 +715,7 @@ export default function Employees() {
                       Đang hoạt động
                     </Typography>
                     <Typography variant="h5">
-                      {employees.filter(emp => emp.is_active).length}
+                      {getActivityStats().active}
                     </Typography>
                   </Box>
                 </Box>
@@ -639,7 +751,7 @@ export default function Employees() {
                       Không hoạt động
                     </Typography>
                     <Typography variant="h5">
-                      {employees.filter(emp => !emp.is_active).length}
+                      {getActivityStats().inactive}
                     </Typography>
                   </Box>
                 </Box>
@@ -727,7 +839,7 @@ export default function Employees() {
                   <TableCell sx={{ width: '180px', textAlign: 'center' }}>Chức vụ</TableCell>
                   <TableCell sx={{ width: '130px', textAlign: 'center' }}>Điện thoại</TableCell>
                   <TableCell sx={{ width: '220px', textAlign: 'center' }}>Email</TableCell>
-                  <TableCell sx={{ width: '100px', textAlign: 'center' }}>Trạng thái</TableCell>
+                  <TableCell sx={{ width: '120px', textAlign: 'center' }}>Trạng thái</TableCell>
                   <TableCell sx={{ width: '100px', textAlign: 'center' }}>Thao tác</TableCell>
                 </TableRow>
               </TableHead>
@@ -817,11 +929,14 @@ export default function Employees() {
                     </TableCell>
                     {/* Trạng thái */}
                     <TableCell sx={{ textAlign: 'center' }}>
-                      <Chip
-                        label={getStatusText(employee.is_active)}
-                        color={getStatusColor(employee.is_active)}
-                        size="small"
-                      />
+                      <Tooltip title={getActivityStatusTooltip(employee.employee_id)} arrow>
+                        <Chip
+                          label={getActivityStatusText(employee.employee_id)}
+                          color={getActivityStatusColor(employee.employee_id)}
+                          size="small"
+                          sx={{ fontSize: '0.75rem', minWidth: '100px', cursor: 'help' }}
+                        />
+                      </Tooltip>
                     </TableCell>
                     {/* Thao tác */}
                     <TableCell sx={{ textAlign: 'center' }}>

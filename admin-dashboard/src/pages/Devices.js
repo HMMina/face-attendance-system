@@ -54,6 +54,29 @@ export default function Devices() {
     is_active: true
   });
 
+  // Generate next device ID in format KIOSKxxx
+  const generateNextDeviceId = () => {
+    if (devices.length === 0) {
+      return 'KIOSK001';
+    }
+    
+    // Find the highest KIOSK number
+    let maxNumber = 0;
+    devices.forEach(device => {
+      const match = device.device_id.match(/^KIOSK(\d{3})$/);
+      if (match) {
+        const number = parseInt(match[1]);
+        if (number > maxNumber) {
+          maxNumber = number;
+        }
+      }
+    });
+    
+    // Generate next number with zero padding
+    const nextNumber = maxNumber + 1;
+    return `KIOSK${nextNumber.toString().padStart(3, '0')}`;
+  };
+
   const fetchDevices = async () => {
     try {
       setLoading(true);
@@ -64,7 +87,11 @@ export default function Devices() {
       
       if (result.success) {
         const devicesData = result.data || [];
-        setDevices(devicesData);
+        // Sort devices by device_id in ascending order
+        const sortedDevices = devicesData.sort((a, b) => {
+          return a.device_id.localeCompare(b.device_id, 'en', { numeric: true });
+        });
+        setDevices(sortedDevices);
       } else {
         throw new Error(result.error || 'Failed to fetch devices from database');
       }
@@ -96,8 +123,10 @@ export default function Devices() {
       });
     } else {
       setEditingDevice(null);
+      // Auto-generate device_id for new device
+      const nextDeviceId = generateNextDeviceId();
       setFormData({
-        device_id: '',
+        device_id: nextDeviceId,
         name: '',
         ip_address: '',
         is_active: true
@@ -361,7 +390,7 @@ export default function Devices() {
               value={formData.device_id}
               onChange={(e) => setFormData({...formData, device_id: e.target.value})}
               disabled={editingDevice} // Không cho edit mã thiết bị khi update
-              helperText={editingDevice ? "Không thể thay đổi mã thiết bị" : "Nhập mã thiết bị duy nhất"}
+              helperText={editingDevice ? "Không thể thay đổi mã thiết bị" : "Mã thiết bị tự động theo format KIOSKxxx"}
               sx={{ mb: 2 }}
             />
             <TextField
