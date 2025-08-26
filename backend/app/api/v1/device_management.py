@@ -233,7 +233,7 @@ async def generate_device_id():
     import uuid
     import datetime
     
-    timestamp = datetime.datetime.now().strftime("%m%d_%H%M")
+    timestamp = datetime.datetime.utcnow().strftime("%m%d_%H%M")
     unique_id = str(uuid.uuid4())[:8].upper()
     device_id = f"KIOSK_TEST_{timestamp}_{unique_id}"
     

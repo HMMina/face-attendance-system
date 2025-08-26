@@ -46,7 +46,7 @@ class EnhancedRecognitionService:
                                similarity: float = None) -> str:
         """Save recognition image with timestamp and info"""
         try:
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")[:-3]
+            timestamp = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")[:-3]
             if employee_id and similarity:
                 filename = f"recognition_{employee_id}_{similarity:.3f}_{timestamp}.jpg"
             else:

@@ -47,7 +47,7 @@ class ApiService {
         http.MultipartFile.fromBytes(
           'image',
           imageBytes,
-          filename: 'attendance_${DateTime.now().millisecondsSinceEpoch}.jpg',
+          filename: 'attendance_${DateTime.now().toUtc().millisecondsSinceEpoch}.jpg',
           contentType: MediaType('image', 'jpeg'),
         ),
       );
@@ -66,8 +66,8 @@ class ApiService {
           'employee_id': data['employee_id'] ?? 'N/A',
           'employee_name': data['employee_name'] ?? 'Nhân viên',
           'confidence': data['confidence'] ?? 0.0,
-          'timestamp': data['timestamp'] ?? DateTime.now().toIso8601String(),
-          'formatted_time': data['formatted_time'] ?? DateTime.now().toString().substring(0, 19),
+          'timestamp': data['timestamp'] ?? DateTime.now().toUtc().toIso8601String(),
+          'formatted_time': data['formatted_time'] ?? DateTime.now().toUtc().toString().substring(0, 19),
           'action': data['action'] ?? 'check_in',
           'action_text': data['action_text'] ?? 'Vào làm',
           'device_id': data['device_id'] ?? deviceId,
@@ -157,7 +157,7 @@ class ApiService {
         http.MultipartFile.fromBytes(
           'image',
           imageBytes,
-          filename: 'face_registration_${DateTime.now().millisecondsSinceEpoch}.jpg',
+          filename: 'face_registration_${DateTime.now().toUtc().millisecondsSinceEpoch}.jpg',
         ),
       );
 

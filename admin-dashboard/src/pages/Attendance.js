@@ -75,7 +75,10 @@ export default function Attendance() {
         // Group attendance records by employee and date
         const groupedData = {};
         rawData.forEach(record => {
-          const date = record.timestamp ? record.timestamp.split('T')[0] : '';
+          // Convert UTC timestamp to Vietnam date for proper grouping
+          const utcDate = new Date(record.timestamp);
+          const vietnamDate = new Date(utcDate.getTime() + (7 * 60 * 60 * 1000));
+          const date = record.timestamp ? vietnamDate.toISOString().split('T')[0] : '';
           const key = `${record.employee_id}_${date}`;
           
           if (!groupedData[key]) {

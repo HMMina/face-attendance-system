@@ -770,7 +770,7 @@ class RealAIService:
             "total_recognitions": 0,
             "avg_processing_time": 0.0,
             "cache_hits": 0,
-            "last_reset": datetime.datetime.now().isoformat()
+            "last_reset": datetime.datetime.utcnow().isoformat()
         }
         self.logger.info("Performance metrics reset")
     
@@ -1040,7 +1040,7 @@ class RealAIService:
             photo_dir = Path("data/face_photos/employee_photos")
             photo_dir.mkdir(parents=True, exist_ok=True)
             
-            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S")
             photo_filename = f"{employee_id}_{timestamp}.jpg"
             photo_path = photo_dir / photo_filename
             
@@ -1256,7 +1256,7 @@ def health_check() -> dict:
             health_status["status"] = "unhealthy"
         
         import datetime
-        health_status["timestamp"] = datetime.datetime.now().isoformat()
+        health_status["timestamp"] = datetime.datetime.utcnow().isoformat()
         
         return health_status
         
@@ -1264,7 +1264,7 @@ def health_check() -> dict:
         return {
             "status": "error",
             "message": str(e),
-            "timestamp": datetime.datetime.now().isoformat()
+            "timestamp": datetime.datetime.utcnow().isoformat()
         }
 
 # Integration functions for existing codebase

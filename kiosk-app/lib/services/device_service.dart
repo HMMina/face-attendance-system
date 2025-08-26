@@ -76,7 +76,7 @@ class DeviceService {
         headers: {'Content-Type': 'application/json'},
         body: jsonEncode({
           'device_id': DeviceConfig.deviceId,
-          'timestamp': DateTime.now().toIso8601String(),
+          'timestamp': DateTime.now().toUtc().toIso8601String(),
           'network_status': 'online',
         }),
       );

@@ -68,11 +68,16 @@ export default function Dashboard() {
       const devices = devicesResult.data || [];
       const attendance = attendanceResult.data || [];
 
-      // Calculate today's attendance
-      const today = getCurrentDateString();
-      const todayAttendance = attendance.filter(record => 
-        record.timestamp && record.timestamp.startsWith(today)
-      );
+      // Calculate today's attendance (using Vietnam timezone)
+      const today = getCurrentDateString(); // Vietnam date
+      const todayAttendance = attendance.filter(record => {
+        if (!record.timestamp) return false;
+        // Convert UTC timestamp to Vietnam date for comparison
+        const utcDate = new Date(record.timestamp);
+        const vietnamDate = new Date(utcDate.getTime() + (7 * 60 * 60 * 1000));
+        const recordDate = vietnamDate.toISOString().split('T')[0];
+        return recordDate === today;
+      });
 
       // Group by employee_id to get unique employees present today
       const presentEmployeeIds = new Set(todayAttendance.map(record => record.employee_id));

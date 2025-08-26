@@ -14,6 +14,11 @@ import logging
 import time
 import asyncio
 
+def format_vietnam_time(utc_datetime):
+    """Convert UTC datetime to Vietnam timezone (UTC+7) and format"""
+    vietnam_time = utc_datetime + datetime.timedelta(hours=7)
+    return vietnam_time.strftime("%H:%M - %d/%m/%Y")
+
 logger = logging.getLogger(__name__)
 router = APIRouter()
 
@@ -81,7 +86,7 @@ async def check_attendance(
             device_upload_dir = get_device_upload_path(device_id, UPLOAD_DIR)
             os.makedirs(device_upload_dir, exist_ok=True)
             
-            timestamp = datetime.datetime.now()
+            timestamp = datetime.datetime.utcnow()
             timestamp_str = timestamp.strftime("%Y%m%d_%H%M%S_%f")
             file_path = os.path.join(device_upload_dir, f"attendance_{device_id}_{timestamp_str}.jpg")
             
@@ -131,7 +136,7 @@ async def check_attendance(
                     "employee": employee_info,
                     "attendance_id": attendance.id,
                     "timestamp": timestamp.isoformat(),
-                    "formatted_time": timestamp.strftime("%H:%M - %d/%m/%Y"),
+                    "formatted_time": format_vietnam_time(timestamp),
                     "confidence": similarity,
                     "similarity": similarity,
                     "recognition_details": {
@@ -148,7 +153,7 @@ async def check_attendance(
                     "message": f"Similarity below threshold: {similarity:.3f}",
                     "employee": employee_info,  # Still return employee info
                     "timestamp": timestamp.isoformat(),
-                    "formatted_time": timestamp.strftime("%H:%M - %d/%m/%Y"),
+                    "formatted_time": format_vietnam_time(timestamp),
                     "confidence": similarity,
                     "similarity": similarity,
                     "recognition_details": {
@@ -211,7 +216,7 @@ def upload_attendance(
     try:
         # Lưu ảnh gốc
         os.makedirs(UPLOAD_DIR, exist_ok=True)
-        timestamp_str = datetime.datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+        timestamp_str = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")
         file_path = os.path.join(UPLOAD_DIR, f"{employee_id}_{timestamp_str}.jpg")
         image_data = image.file.read() if hasattr(image.file, 'read') else image.read()
         with open(file_path, "wb") as f:

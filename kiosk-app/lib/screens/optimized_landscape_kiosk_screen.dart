@@ -1053,7 +1053,7 @@ class _OptimizedLandscapeKioskScreenState extends State<OptimizedLandscapeKioskS
                   border: Border.all(color: Colors.blue[200]!),
                 ),
                 child: Text(
-                  '${result!['formatted_time'] ?? DateTime.now().toString().substring(0, 19)}',
+                  '${result!['formatted_time'] ?? DateTime.now().toUtc().toString().substring(0, 19)}',
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w500,

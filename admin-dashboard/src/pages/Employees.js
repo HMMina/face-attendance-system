@@ -51,6 +51,7 @@ import {
   CloudUpload as CloudUploadIcon
 } from '@mui/icons-material';
 import { getEmployees, getDepartments, addEmployee, addEmployeeWithPhoto, updateEmployee, uploadEmployeePhoto, uploadMultiplePhotos, deleteEmployee, getAllAttendance, api } from '../services/api';
+import { formatTimeFromTimestamp, formatDateFromTimestamp, formatDateTimeFromTimestamp } from '../utils/dateUtils';
 
 export default function Employees() {
   const [employees, setEmployees] = useState([]);
@@ -194,11 +195,17 @@ export default function Employees() {
 
   // Calculate employee activity status based on today's attendance
   const getEmployeeActivityStatus = (employeeId) => {
-    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD format
+    // Get today's date in Vietnam timezone
+    const now = new Date();
+    const vietnamNow = new Date(now.getTime() + (7 * 60 * 60 * 1000));
+    const today = vietnamNow.toISOString().split('T')[0]; // YYYY-MM-DD format in Vietnam timezone
     
     // Get today's attendance records for this employee
     const todayRecords = attendanceData.filter(record => {
-      const recordDate = new Date(record.timestamp).toISOString().split('T')[0];
+      // Convert UTC timestamp to Vietnam time for date comparison
+      const utcDate = new Date(record.timestamp);
+      const vietnamDate = new Date(utcDate.getTime() + (7 * 60 * 60 * 1000));
+      const recordDate = vietnamDate.toISOString().split('T')[0];
       return record.employee_id === employeeId && recordDate === today;
     });
 
@@ -238,9 +245,16 @@ export default function Employees() {
 
   // Get detailed status tooltip
   const getActivityStatusTooltip = (employeeId) => {
-    const today = new Date().toISOString().split('T')[0];
+    // Get today's date in Vietnam timezone
+    const now = new Date();
+    const vietnamNow = new Date(now.getTime() + (7 * 60 * 60 * 1000));
+    const today = vietnamNow.toISOString().split('T')[0];
+    
     const todayRecords = attendanceData.filter(record => {
-      const recordDate = new Date(record.timestamp).toISOString().split('T')[0];
+      // Convert UTC timestamp to Vietnam time for date comparison
+      const utcDate = new Date(record.timestamp);
+      const vietnamDate = new Date(utcDate.getTime() + (7 * 60 * 60 * 1000));
+      const recordDate = vietnamDate.toISOString().split('T')[0];
       return record.employee_id === employeeId && recordDate === today;
     });
 
@@ -253,10 +267,8 @@ export default function Employees() {
     );
     
     const lastRecord = sortedRecords[sortedRecords.length - 1];
-    const lastTime = new Date(lastRecord.timestamp).toLocaleTimeString('vi-VN', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    // Use formatTimeFromTimestamp to display Vietnam time correctly
+    const lastTime = formatTimeFromTimestamp(lastRecord.timestamp);
     
     if (lastRecord.action_type === 'CHECK_IN') {
       return `Đã vào lúc ${lastTime} (chưa ra)`;

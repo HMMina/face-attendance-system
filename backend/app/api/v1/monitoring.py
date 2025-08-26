@@ -22,7 +22,7 @@ async def get_devices_status(device_manager: DeviceManager = Depends(get_device_
         stats = device_manager.get_system_stats()
         return {
             "success": True,
-            "timestamp": datetime.datetime.now().isoformat(),
+            "timestamp": datetime.datetime.utcnow().isoformat(),
             "data": stats
         }
     except Exception as e:
@@ -48,7 +48,7 @@ async def get_system_metrics(
         device_stats = device_manager.get_system_stats()
         
         # Attendance stats (last 24 hours)
-        yesterday = datetime.datetime.now() - datetime.timedelta(days=1)
+        yesterday = datetime.datetime.utcnow() - datetime.timedelta(days=1)
         attendance_count = db.execute(
             text("SELECT COUNT(*) FROM attendance WHERE timestamp >= :yesterday"),
             {"yesterday": yesterday}
@@ -56,7 +56,7 @@ async def get_system_metrics(
         
         return {
             "success": True,
-            "timestamp": datetime.datetime.now().isoformat(),
+            "timestamp": datetime.datetime.utcnow().isoformat(),
             "system": {
                 "cpu_percent": cpu_percent,
                 "memory": {
@@ -113,7 +113,7 @@ async def health_check_detailed(
     
     health_data = {
         "status": "healthy" if is_healthy else "unhealthy",
-        "timestamp": datetime.datetime.now().isostring(),
+        "timestamp": datetime.datetime.utcnow().isoformat(),
         "checks": {
             "database": "ok" if db_healthy else "error",
             "cpu": f"{cpu_percent}%",
@@ -138,7 +138,7 @@ async def device_heartbeat(
         return {
             "success": success,
             "device_id": device_id,
-            "timestamp": datetime.datetime.now().isostring()
+            "timestamp": datetime.datetime.utcnow().isoformat()
         }
     except Exception as e:
         logger.error(f"Heartbeat error for device {device_id}: {e}")
@@ -152,7 +152,7 @@ async def get_performance_metrics(device_manager: DeviceManager = Depends(get_de
         
         return {
             "success": True,
-            "timestamp": datetime.datetime.now().isostring(),
+            "timestamp": datetime.datetime.utcnow().isoformat(),
             "metrics": {
                 "total_devices": device_stats["total_devices"],
                 "active_devices": device_stats["active_devices"],

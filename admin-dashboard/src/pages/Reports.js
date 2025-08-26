@@ -1,6 +1,7 @@
 // Trang báo cáo - Tối ưu cho quản lý cơ bản
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { formatTimeFromTimestamp, formatDateFromTimestamp, formatDateTimeFromTimestamp } from '../utils/dateUtils';
 import {
   Container,
   Typography,
@@ -80,7 +81,10 @@ export default function Reports() {
         
         // Filter attendance records within date range
         const filteredAttendance = attendance.filter(record => {
-          const recordDate = new Date(record.timestamp);
+          // Convert UTC timestamp to Vietnam time for date comparison
+          const utcDate = new Date(record.timestamp);
+          const vietnamTime = new Date(utcDate.getTime() + (7 * 60 * 60 * 1000));
+          const recordDate = new Date(vietnamTime.toISOString().split('T')[0]);
           return recordDate >= startDate && recordDate <= endDate;
         });
         
@@ -90,18 +94,24 @@ export default function Reports() {
             record.employee_id === employee.employee_id
           );
           
-          // Group by date to count unique days
+          // Group by date to count unique days (using Vietnam timezone)
           const uniqueDays = new Set(
-            employeeAttendance.map(record => record.timestamp.split('T')[0])
+            employeeAttendance.map(record => {
+              const utcDate = new Date(record.timestamp);
+              const vietnamTime = new Date(utcDate.getTime() + (7 * 60 * 60 * 1000));
+              return vietnamTime.toISOString().split('T')[0];
+            })
           );
           const daysPresent = uniqueDays.size;
           
-          // Calculate late days (days with first check-in after 8:30 AM)
+          // Calculate late days (days with first check-in after 8:30 AM Vietnam time)
           const dailyFirstCheckin = {};
           employeeAttendance.forEach(record => {
-            const date = record.timestamp.split('T')[0];
-            if (!dailyFirstCheckin[date] || new Date(record.timestamp) < new Date(dailyFirstCheckin[date])) {
-              dailyFirstCheckin[date] = record.timestamp;
+            const utcDate = new Date(record.timestamp);
+            const vietnamTime = new Date(utcDate.getTime() + (7 * 60 * 60 * 1000));
+            const date = vietnamTime.toISOString().split('T')[0];
+            if (!dailyFirstCheckin[date] || vietnamTime < new Date(dailyFirstCheckin[date])) {
+              dailyFirstCheckin[date] = vietnamTime.toISOString();
             }
           });
           
@@ -112,12 +122,14 @@ export default function Reports() {
             return checkInTime > workStartTime;
           }).length;
           
-          // Calculate early leave days (days with last check-out before 18:00)
+          // Calculate early leave days (days with last check-out before 18:00 Vietnam time)
           const dailyLastCheckout = {};
           employeeAttendance.forEach(record => {
-            const date = record.timestamp.split('T')[0];
-            if (!dailyLastCheckout[date] || new Date(record.timestamp) > new Date(dailyLastCheckout[date])) {
-              dailyLastCheckout[date] = record.timestamp;
+            const utcDate = new Date(record.timestamp);
+            const vietnamTime = new Date(utcDate.getTime() + (7 * 60 * 60 * 1000));
+            const date = vietnamTime.toISOString().split('T')[0];
+            if (!dailyLastCheckout[date] || vietnamTime > new Date(dailyLastCheckout[date])) {
+              dailyLastCheckout[date] = vietnamTime.toISOString();
             }
           });
           

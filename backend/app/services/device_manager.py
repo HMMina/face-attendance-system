@@ -38,7 +38,7 @@ class DeviceManager:
         """Register a new device or update existing device"""
         try:
             async with self._stats_lock:
-                now = datetime.datetime.now()
+                now = datetime.datetime.utcnow()
                 
                 if device_id in self._active_devices:
                     # Update existing device
@@ -78,7 +78,7 @@ class DeviceManager:
             if device_id in self._active_devices:
                 device = self._active_devices[device_id]
                 device.requests_count += 1
-                device.last_seen = datetime.datetime.now()
+                device.last_seen = datetime.datetime.utcnow()
                 
                 # Calculate rolling average response time
                 current_avg = device.avg_response_time
@@ -103,7 +103,7 @@ class DeviceManager:
     
     async def cleanup_inactive_devices(self, timeout_minutes: int = 5):
         """Remove devices that haven't been seen for timeout_minutes"""
-        cutoff_time = datetime.datetime.now() - datetime.timedelta(minutes=timeout_minutes)
+        cutoff_time = datetime.datetime.utcnow() - datetime.timedelta(minutes=timeout_minutes)
         
         async with self._stats_lock:
             inactive_devices = []

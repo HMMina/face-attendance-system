@@ -30,7 +30,7 @@ class TemplateManagerService:
         
     def _generate_filename(self, employee_id: str, image_id: int) -> str:
         """Generate filename for image storage"""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         return f"{employee_id}_image_{image_id}_{timestamp}.jpg"
     
     async def add_admin_template(self, db: Session, employee_id: str, 
