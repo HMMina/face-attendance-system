@@ -549,17 +549,63 @@ class RealAIService:
             # Get classification result
             probs = results[0].probs
             if probs is not None:
-                # Assuming class 0 = real, class 1 = spoof
-                real_confidence = probs.data[0].cpu().numpy()
-                spoof_confidence = probs.data[1].cpu().numpy() if len(probs.data) > 1 else 1 - real_confidence
+                # Get class names from model if available
+                class_names = getattr(self.anti_spoof_model, 'names', None)
                 
-                self.logger.info(f"🔍 Anti-spoofing scores - Real: {real_confidence:.3f}, Spoof: {spoof_confidence:.3f}")
+                if class_names:
+                    self.logger.debug(f"🏷️ Model classes: {class_names}")
+                    
+                    # Find real and fake/spoof class indices
+                    real_idx = None
+                    fake_idx = None
+                    
+                    for idx, name in class_names.items():
+                        name_lower = name.lower()
+                        if name_lower in ['real', 'live', 'person', 'human']:
+                            real_idx = idx
+                        elif name_lower in ['fake', 'spoof', 'photo', 'video', 'attack']:
+                            fake_idx = idx
+                    
+                    if real_idx is not None and fake_idx is not None:
+                        real_confidence = probs.data[real_idx].cpu().numpy()
+                        fake_confidence = probs.data[fake_idx].cpu().numpy()
+                        
+                        self.logger.info(f"🔍 Anti-spoofing scores - Real({class_names[real_idx]}): {real_confidence:.3f}, Fake({class_names[fake_idx]}): {fake_confidence:.3f}")
+                        
+                        is_real = real_confidence > fake_confidence
+                        self.logger.info(f"🔍 Anti-spoofing result: {'REAL' if is_real else 'SPOOF'}")
+                        return is_real
+                    else:
+                        self.logger.warning(f"⚠️ Could not identify real/fake classes in: {class_names}")
                 
-                # YOLOv11s-cls returns probabilities, so we compare directly
-                # Return True if real_confidence > spoof_confidence
-                is_real = real_confidence > spoof_confidence
-                self.logger.info(f"🔍 Anti-spoofing result: {'REAL' if is_real else 'SPOOF'}")
-                return is_real
+                # Fallback: assume standard binary classification
+                # Try both possibilities to see which makes more sense
+                if len(probs.data) >= 2:
+                    conf_0 = probs.data[0].cpu().numpy()
+                    conf_1 = probs.data[1].cpu().numpy()
+                    
+                    self.logger.info(f"🔍 Raw classification scores - Class 0: {conf_0:.3f}, Class 1: {conf_1:.3f}")
+                    
+                    # Log top prediction
+                    top_class = results[0].probs.top1
+                    top_conf = results[0].probs.top1conf.cpu().numpy()
+                    self.logger.info(f"🎯 Top prediction: Class {top_class} with confidence {top_conf:.3f}")
+                    
+                    # Based on verified class mapping: Class 0='fake', Class 1='real'
+                    # Use the higher confidence as real if it's above threshold
+                    if top_conf > 0.7:  # High confidence threshold
+                        # Verified class mapping: Class 0='fake', Class 1='real'
+                        is_real = (top_class == 1)  # Class 1 is 'real'
+                        self.logger.info(f"🔍 High confidence prediction: {'REAL' if is_real else 'SPOOF'}")
+                        return is_real
+                    else:
+                        # Low confidence, default to real for safety
+                        self.logger.warning(f"⚠️ Low confidence ({top_conf:.3f}), defaulting to REAL")
+                        return True
+                        
+                else:
+                    self.logger.warning("⚠️ Unexpected number of classes in model output")
+                    return True
             
             return True
             
@@ -852,6 +898,8 @@ class RealAIService:
                 "success": False,
                 "message": f"Processing error: {str(e)}"
             }
+
+    def process_recognition_with_db(self, image_bytes: bytes, device_id: str, db: Session) -> dict:
         """
         Complete face recognition pipeline with database integration
         """
@@ -1225,7 +1273,7 @@ def real_recognition(image_bytes: bytes, device_id: str, db: Session) -> dict:
     Replace mock_recognition with this function
     """
     service = get_ai_service()
-    return service.process_recognition(image_bytes, device_id, db)
+    return service.process_recognition_with_db(image_bytes, device_id, db)
 
 def register_employee_face(image_bytes: bytes, employee_id: str, device_id: str, db: Session) -> dict:
     """
