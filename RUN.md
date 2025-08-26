@@ -23,8 +23,9 @@ flutter run -d chrome --web-port 8083
 ```
 
 ### Bước 2: Mở browser với URL có device_id parameter
-- **KIOSK001**: http://localhost:8082?device_id=KIOSK001
-- **KIOSK002**: http://localhost:8083?device_id=KIOSK002
+⚠️ **QUAN TRỌNG**: Phải mở URL có `?device_id=` parameter để app nhận đúng device ID
+- **KIOSK001**: http://localhost:8082/?device_id=KIOSK001
+- **KIOSK002**: http://localhost:8083/?device_id=KIOSK002
 
 ## Cách 3: Chạy với command line arguments (có thể không hoạt động)
 ```powershell

@@ -15,7 +15,6 @@ if ($List) {
     Write-Host "Available Devices:" -ForegroundColor Green
     Write-Host "  KIOSK001 → Port 8082"
     Write-Host "  KIOSK002 → Port 8083"
-    Write-Host "  KIOSK003 → Port 8084"
     exit
 }
 
@@ -28,10 +27,9 @@ if (-not $DeviceId) {
 $assignedPort = 8082
 if ($DeviceId -eq "KIOSK001") { $assignedPort = 8082 }
 elseif ($DeviceId -eq "KIOSK002") { $assignedPort = 8083 }
-elseif ($DeviceId -eq "KIOSK003") { $assignedPort = 8084 }
-elseif ($DeviceId -match "KIOSK(\d+)") { 
-    $num = [int]$matches[1]
-    $assignedPort = 8081 + $num 
+else {
+    Write-Host "Warning: Unknown device $DeviceId, using default port 8082" -ForegroundColor Yellow
+    $assignedPort = 8082
 }
 
 if ($Port -gt 0) { $assignedPort = $Port }

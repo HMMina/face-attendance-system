@@ -21,9 +21,6 @@ class DeviceConfig {
   static const Map<String, int> devicePortMap = {
     'KIOSK001': 8082,
     'KIOSK002': 8083,
-    'KIOSK003': 8084,
-    'KIOSK004': 8085,
-    'KIOSK005': 8086,
   };
   
   /// Get port for device ID (auto-calculate if not mapped)
