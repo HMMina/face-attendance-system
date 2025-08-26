@@ -5,21 +5,37 @@ import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'screens/optimized_landscape_kiosk_screen.dart';
 import 'config/device_config.dart';
+import 'dart:html' as html show window;
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Set device ID for web (since environment variables don't work on web)
+  // For web, FORCE check URL parameters every time
   if (kIsWeb) {
-    // Check URL parameters for device_id
-    final uri = Uri.base;
-    final deviceIdParam = uri.queryParameters['device_id'];
+    // Always check current URL for device_id parameter
+    final currentUri = Uri.parse(html.window.location.href);
+    final deviceIdParam = currentUri.queryParameters['device_id'];
+    
+    print('main.dart: Current URL: ${html.window.location.href}');
+    print('main.dart: URL parameters: ${currentUri.queryParameters}');
+    
     if (deviceIdParam != null && deviceIdParam.isNotEmpty) {
+      print('main.dart: ✅ Found device_id in URL: $deviceIdParam');
       DeviceConfig.setDeviceId(deviceIdParam);
+      DeviceConfig.saveToLocalStorage(deviceIdParam);
     } else {
-      // Default device ID for web testing
-      DeviceConfig.setDeviceId('KIOSK001');
+      print('main.dart: ❌ No device_id in URL, checking localStorage...');
+      final savedId = DeviceConfig.getFromLocalStorage();
+      if (savedId != null) {
+        print('main.dart: ✅ Found device_id in localStorage: $savedId');
+        DeviceConfig.setDeviceId(savedId);
+      } else {
+        print('main.dart: ❌ No device_id anywhere, using default: KIOSK001');
+        DeviceConfig.setDeviceId('KIOSK001');
+      }
     }
+    
+    print('main.dart: Final device_id: ${DeviceConfig.deviceId}');
   }
   
   // Set system UI for kiosk mode

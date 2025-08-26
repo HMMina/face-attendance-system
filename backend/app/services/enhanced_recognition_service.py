@@ -35,8 +35,8 @@ class EnhancedRecognitionService:
         self.VERY_HIGH_CONFIDENCE_THRESHOLD = 0.85  # Lowered from 0.90
         
         # Learning thresholds
-        self.MIN_QUALITY_FOR_LEARNING = 0.8
-        self.MIN_CONFIDENCE_FOR_LEARNING = 0.85
+        self.MIN_QUALITY_FOR_LEARNING = 0.7
+        self.MIN_CONFIDENCE_FOR_LEARNING = 0.8
         
         # Uploads directory
         self.uploads_dir = Path("data/uploads")

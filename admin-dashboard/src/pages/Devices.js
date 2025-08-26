@@ -38,6 +38,7 @@ import {
   DevicesOther as DeviceIcon
 } from '@mui/icons-material';
 import { getDevices, addDevice, updateDevice, deleteDevice } from '../services/api';
+import { formatToVietnamTime } from '../utils/dateUtils';
 
 export default function Devices() {
   const [devices, setDevices] = useState([]);
@@ -343,13 +344,13 @@ export default function Devices() {
                     <TableCell>{device.ip_address || 'Chưa cấu hình'}</TableCell>
                     <TableCell>
                       <Chip
-                        label={device.is_active ? 'Hoạt động' : 'Không hoạt động'}
-                        color={device.is_active ? 'success' : 'error'}
+                        label={device.network_status === 'online' ? 'Trực tuyến' : 'Ngoại tuyến'}
+                        color={device.network_status === 'online' ? 'success' : 'error'}
                         size="small"
                       />
                     </TableCell>
                     <TableCell>
-                      {device.last_seen ? new Date(device.last_seen).toLocaleString('vi-VN') : 'Chưa kết nối'}
+                      {formatToVietnamTime(device.last_seen)}
                     </TableCell>
                     <TableCell>
                       <IconButton

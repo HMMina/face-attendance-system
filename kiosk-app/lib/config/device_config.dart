@@ -7,7 +7,7 @@ import 'dart:html' as html show window;
 class DeviceConfig {
   // Generate unique device ID based on hardware hoặc environment
   static String deviceId = _generateDeviceId();
-  static String deviceName = 'IT';
+  static String deviceName = 'IT'; // Default name, will be updated from server
   static String? ipAddress;
   static String? serverIp;
   static String? token;
@@ -16,25 +16,116 @@ class DeviceConfig {
   static bool isTestMode = _isTestMode();
   static String testPrefix = 'KIOSK_TEST';
   
+  // Port mapping for devices
+  static const int basePort = 8082;
+  static const Map<String, int> devicePortMap = {
+    'KIOSK001': 8082,
+    'KIOSK002': 8083,
+    'KIOSK003': 8084,
+    'KIOSK004': 8085,
+    'KIOSK005': 8086,
+  };
+  
+  /// Get port for device ID (auto-calculate if not mapped)
+  static int getPortForDevice(String deviceId) {
+    // If explicitly mapped, use that
+    if (devicePortMap.containsKey(deviceId)) {
+      return devicePortMap[deviceId]!;
+    }
+    
+    // Auto-calculate for KIOSK### pattern
+    final match = RegExp(r'KIOSK(\d{3})').firstMatch(deviceId);
+    if (match != null) {
+      final number = int.parse(match.group(1)!);
+      return basePort + (number - 1); // KIOSK001→8082, KIOSK002→8083, etc.
+    }
+    
+    // Fallback: hash-based port assignment
+    return basePort + (deviceId.hashCode % 100).abs();
+  }
+  
+  /// Get suggested run command for device
+  static String getRunCommand(String deviceId) {
+    final port = getPortForDevice(deviceId);
+    return 'flutter run -d chrome --web-port $port';
+  }
+  
+  /// Get browser URL for device
+  static String getBrowserUrl(String deviceId) {
+    final port = getPortForDevice(deviceId);
+    return 'http://localhost:$port?device_id=$deviceId';
+  }
+  
   /// Set device ID manually (useful for web)
   static void setDeviceId(String newDeviceId) {
     deviceId = newDeviceId;
-    print('DeviceConfig: Device ID manually set to: $deviceId');
+    print('DeviceConfig: Device ID set to: $deviceId');
+  }
+  
+  /// Set preset device ID for easy testing (web only)
+  static void setPresetDeviceId(String presetDeviceId) {
+    if (kIsWeb) {
+      try {
+        html.window.localStorage['PRESET_DEVICE_ID'] = presetDeviceId;
+        deviceId = presetDeviceId;
+        print('DeviceConfig: Preset device ID set to: $presetDeviceId');
+      } catch (e) {
+        print('DeviceConfig: Failed to set preset device ID: $e');
+      }
+    }
+  }
+  
+  /// Quick setup for common device IDs
+  static void setKiosk001() => setPresetDeviceId('KIOSK001');
+  static void setKiosk002() => setPresetDeviceId('KIOSK002');
+  
+  /// Save device ID to localStorage (web only)
+  static void saveToLocalStorage(String deviceId) {
+    if (kIsWeb) {
+      try {
+        html.window.localStorage['KIOSK_DEVICE_ID'] = deviceId;
+        print('DeviceConfig: Saved device ID to localStorage: $deviceId');
+      } catch (e) {
+        print('DeviceConfig: Failed to save to localStorage: $e');
+      }
+    }
+  }
+  
+  /// Get device ID from localStorage (web only)
+  static String? getFromLocalStorage() {
+    if (kIsWeb) {
+      try {
+        final savedId = html.window.localStorage['KIOSK_DEVICE_ID'];
+        if (savedId != null && savedId.isNotEmpty) {
+          print('DeviceConfig: Retrieved device ID from localStorage: $savedId');
+          return savedId;
+        }
+      } catch (e) {
+        print('DeviceConfig: Failed to read from localStorage: $e');
+      }
+    }
+    return null;
   }
   
   /// Generate unique device ID from hardware info hoặc environment
   static String _generateDeviceId() {
     try {
-      // 1. For web, check URL parameters first
+      // 1. For web, check URL parameters first (HIGHEST PRIORITY)
       if (kIsWeb) {
         final uri = Uri.parse(html.window.location.href);
         final deviceIdParam = uri.queryParameters['device_id'];
         if (deviceIdParam != null && deviceIdParam.isNotEmpty) {
           print('DeviceConfig: Using URL parameter device ID: $deviceIdParam');
+          // Save to localStorage for future reference
+          try {
+            html.window.localStorage['KIOSK_DEVICE_ID'] = deviceIdParam;
+          } catch (e) {
+            print('DeviceConfig: Failed to save URL param to localStorage: $e');
+          }
           return deviceIdParam;
         }
         
-        // For web, try localStorage for device_id
+        // 2. For web, try localStorage for device_id (SECOND PRIORITY)
         try {
           final storedDeviceId = html.window.localStorage['KIOSK_DEVICE_ID'];
           if (storedDeviceId != null && storedDeviceId.isNotEmpty) {
@@ -45,7 +136,7 @@ class DeviceConfig {
           print('DeviceConfig: localStorage access failed: $e');
         }
         
-        // For web in test mode, use a fixed device ID
+        // 3. For web in test mode, use a fixed device ID (THIRD PRIORITY)
         if (_isTestMode()) {
           const webTestId = 'KIOSK001'; // Use the desired device ID
           print('DeviceConfig: Using web test device ID: $webTestId');

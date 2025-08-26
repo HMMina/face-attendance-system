@@ -30,14 +30,82 @@ def register_device(db: Session, device: DeviceCreate):
     return db_device
 
 def get_devices(db: Session):
-    return db.query(Device).all()
+    """Get all devices and update network status based on last_seen"""
+    devices = db.query(Device).all()
+    
+    # Update network status based on last_seen (2 minutes timeout)
+    current_time = datetime.datetime.utcnow()
+    timeout_threshold = current_time - datetime.timedelta(minutes=2)
+    
+    print(f"🕐 Current time (UTC): {current_time}")
+    print(f"🕐 Timeout threshold (UTC): {timeout_threshold} (2 minutes ago)")
+
+    for device in devices:
+        if device.last_seen:
+            print(f"📱 Device {device.device_id}: last_seen = {device.last_seen} (UTC)")
+            
+            # Ensure last_seen is treated as UTC if no timezone info
+            if device.last_seen.tzinfo is None:
+                device_last_seen = device.last_seen
+            else:
+                device_last_seen = device.last_seen.replace(tzinfo=None)
+            
+            time_diff = current_time - device_last_seen
+            minutes_ago = time_diff.total_seconds() / 60
+            print(f"📱 Device {device.device_id}: last seen {minutes_ago:.1f} minutes ago")
+            
+            # Handle case where last_seen is in the future (timezone issue)
+            if minutes_ago < 0:
+                print(f"⚠️  Device {device.device_id}: last_seen is in the future! Likely timezone issue. Treating as offline.")
+                if device.network_status != "offline":
+                    device.network_status = "offline"
+                    print(f"🔴 Device {device.device_id} marked as OFFLINE (future timestamp)")
+            elif device_last_seen < timeout_threshold:
+                # Device should be offline
+                if device.network_status != "offline":
+                    device.network_status = "offline"
+                    print(f"🔴 Device {device.device_id} marked as OFFLINE (last seen: {device.last_seen})")
+            else:
+                # Device should be online (last seen within 2 minutes)
+                if device.network_status != "online":
+                    device.network_status = "online"
+                    print(f"🟢 Device {device.device_id} marked as ONLINE (last seen: {device.last_seen})")
+        else:
+            # No last_seen - mark as offline
+            if device.network_status != "offline":
+                device.network_status = "offline"
+                print(f"⚫ Device {device.device_id} marked as OFFLINE (never seen)")
+    
+    # Commit changes to database
+    db.commit()
+    
+    return devices
 
 def update_heartbeat(db: Session, data: DeviceHeartbeat):
     device = db.query(Device).filter(Device.device_id == data.device_id).first()
     if device:
-        device.last_seen = data.timestamp
-        device.network_status = data.network_status
+        # Always use UTC time for consistency
+        if hasattr(data, 'timestamp') and data.timestamp:
+            # Convert client timestamp to UTC (assume client sends local time UTC+7)
+            client_timestamp = data.timestamp
+            
+            # If timestamp seems to be local time (future compared to UTC), convert it
+            current_utc = datetime.datetime.utcnow()
+            if client_timestamp > current_utc:
+                # Likely local time (UTC+7), convert to UTC
+                utc_timestamp = client_timestamp - datetime.timedelta(hours=7)
+                print(f"🌏 Converting local time {client_timestamp} to UTC {utc_timestamp}")
+                device.last_seen = utc_timestamp
+            else:
+                # Already UTC or reasonable timestamp
+                device.last_seen = client_timestamp
+        else:
+            # If no timestamp provided, use current UTC time
+            device.last_seen = datetime.datetime.utcnow()
+            
+        device.network_status = "online"  # Always mark as online when heartbeat received
         db.commit()
+        print(f"💓 Heartbeat updated for device {data.device_id} - last_seen: {device.last_seen} UTC, status: online")
 
 def get_device_by_id(db: Session, device_id: int):
     return db.query(Device).filter(Device.id == device_id).first()

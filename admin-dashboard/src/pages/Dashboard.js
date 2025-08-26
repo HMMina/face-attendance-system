@@ -90,7 +90,7 @@ export default function Dashboard() {
         return isLateCheckIn(timestamp);
       });
 
-      const onlineDevices = devices.filter(device => device.network_status === 'online' || device.is_active).length;
+      const onlineDevices = devices.filter(device => device.network_status === 'online').length;
 
       setStats({
         totalEmployees: employees.length,
