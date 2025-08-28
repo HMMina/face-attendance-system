@@ -1,4 +1,5 @@
-# 🚀 HƯỚNG DẪN CHẠY MULTIPLE KIOSK INSTANCES
+cd kiosk-app; flutter run -d chrome --web-port 8083 --web-browser-flag="--app=http://localhost:8083/?device_id=KIOSK002"
+
 
 ## Cách 1: Sử dụng script tự động (KHUYẾN NGHỊ)
 ```powershell
@@ -8,6 +9,7 @@
 # Hoặc custom device IDs:
 .\kiosk-app\run_kiosk_multiple.ps1 -Device1 "KIOSK001" -Device2 "KIOSK002"
 ```
+
 
 ## Cách 2: Chạy thủ công từng bước
 

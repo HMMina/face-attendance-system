@@ -89,6 +89,12 @@ def update_heartbeat(db: Session, data: DeviceHeartbeat):
             # Convert client timestamp to UTC (assume client sends local time UTC+7)
             client_timestamp = data.timestamp
             
+            # Ensure both timestamps are timezone-naive for comparison
+            if client_timestamp.tzinfo is not None:
+                # Convert timezone-aware to UTC naive
+                client_timestamp = client_timestamp.utctimetuple()
+                client_timestamp = datetime.datetime(*client_timestamp[:6])
+            
             # If timestamp seems to be local time (future compared to UTC), convert it
             current_utc = datetime.datetime.utcnow()
             if client_timestamp > current_utc:
