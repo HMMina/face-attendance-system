@@ -100,6 +100,7 @@ async def check_attendance(
         employee_info = recognition_result.get("employee")
         employee_id = recognition_result.get("employee_id")
         similarity = recognition_result.get("similarity", 0.0)
+        threshold = recognition_result.get("thresholds", {}).get("recognition", 0.65)
         
         # Check if we have employee data to return
         if employee_info and employee_id:
@@ -146,12 +147,11 @@ async def check_attendance(
                     }
                 }
             else:
-                # Low confidence - return employee info but don't log attendance
+                # Low confidence - DON'T log attendance and return failure
                 logger.info(f"🔍 DEBUG: Low confidence match: {employee_id} with similarity {similarity:.3f}")
                 return {
-                    "success": True,  # Still success for debugging
-                    "message": f"Similarity below threshold: {similarity:.3f}",
-                    "employee": employee_info,  # Still return employee info
+                    "success": False,  # ✅ CHANGED: Return False for low confidence
+                    "message": "Khuôn mặt không đạt độ tin cậy cần thiết để chấm công",
                     "timestamp": timestamp.isoformat(),
                     "formatted_time": format_vietnam_time(timestamp),
                     "confidence": similarity,
@@ -159,7 +159,10 @@ async def check_attendance(
                     "recognition_details": {
                         "confidence_level": recognition_result.get("confidence_level", "LOW"),
                         "best_similarity": similarity,
-                        "threshold_met": False
+                        "threshold_met": False,
+                        "employee_found": True,
+                        "employee_id": employee_id,
+                        "threshold_required": threshold
                     }
                 }
         

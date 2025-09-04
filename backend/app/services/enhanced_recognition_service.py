@@ -30,8 +30,8 @@ class EnhancedRecognitionService:
         self.template_manager = template_manager
         
         # Recognition thresholds - LOWERED FOR TESTING
-        self.RECOGNITION_THRESHOLD = 0.65  # Lowered from 0.75
-        self.HIGH_CONFIDENCE_THRESHOLD = 0.75  # Lowered from 0.85
+        self.RECOGNITION_THRESHOLD = 0.70  # Lowered from 0.75
+        self.HIGH_CONFIDENCE_THRESHOLD = 0.80  # Lowered from 0.85
         self.VERY_HIGH_CONFIDENCE_THRESHOLD = 0.85  # Lowered from 0.90
         
         # Learning thresholds
@@ -74,7 +74,7 @@ class EnhancedRecognitionService:
                 logger.warning("🚨 SPOOF DETECTED - rejecting recognition attempt")
                 return {
                     "success": False,
-                    "message": "Spoof attempt detected - please use a real face",
+                    "message": "Hệ thống phát hiện khuôn mặt không hợp lệ – vui lòng dùng khuôn mặt thật.",
                     "recognized": False
                 }
             

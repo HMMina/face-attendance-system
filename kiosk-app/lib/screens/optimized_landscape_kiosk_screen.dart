@@ -661,7 +661,7 @@ class _OptimizedLandscapeKioskScreenState extends State<OptimizedLandscapeKioskS
                   
                   Expanded(
                     child: Text(
-                      hasEmployee ? 'Chấm công thành công!' : (result!['message'] ?? 'Không nhận diện được'),
+                      isRealSuccess ? 'Chấm công thành công!' : (result!['message'] ?? 'Không nhận diện được'),
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
