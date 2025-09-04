@@ -1,4 +1,6 @@
-Ngưỡng để nhận diện > 0.7 vì ngưỡng trung bình đã thử nghiệm là 0.7299
+Ngưỡng để nhận diện > 0.70 (RECOGNITION_THRESHOLD = 0.70)
+- HIGH_CONFIDENCE_THRESHOLD = 0.80  
+- VERY_HIGH_CONFIDENCE_THRESHOLD = 0.85 ngưỡng trung bình đã thử nghiệm là 0.7299
 
 Nếu xuất hiện lỗi 
 "ERROR: [Errno 10048] error while attempting to bind on address ('0.0.0.0', 8000): only one usage of each socket address (protocol/network address/port) is normally permitted"

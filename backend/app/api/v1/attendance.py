@@ -151,7 +151,7 @@ async def check_attendance(
                 logger.info(f"🔍 DEBUG: Low confidence match: {employee_id} with similarity {similarity:.3f}")
                 return {
                     "success": False,  # ✅ CHANGED: Return False for low confidence
-                    "message": "Khuôn mặt không đạt độ tin cậy cần thiết để chấm công",
+                    "message": f"Khuôn mặt không đạt độ tin cậy cần thiết để chấm công {similarity:.3f}",
                     "timestamp": timestamp.isoformat(),
                     "formatted_time": format_vietnam_time(timestamp),
                     "confidence": similarity,
