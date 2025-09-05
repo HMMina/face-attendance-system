@@ -72,13 +72,40 @@ export default function Attendance() {
         const rawData = attendanceResult.data || [];
         const employeeList = employeesResult.success ? (employeesResult.data || []) : [];
         
+        console.log(`📊 DEBUG: Fetched ${rawData.length} attendance records`);
+        console.log('🔍 Sample records:', rawData.slice(0, 3));
+        
         // Group attendance records by employee and date
         const groupedData = {};
         rawData.forEach(record => {
-          // Convert UTC timestamp to Vietnam date for proper grouping
-          const utcDate = new Date(record.timestamp);
-          const vietnamDate = new Date(utcDate.getTime() + (7 * 60 * 60 * 1000));
-          const date = record.timestamp ? vietnamDate.toISOString().split('T')[0] : '';
+          // Handle timestamp parsing - database format: "2025-09-04 18:11:08.738343"
+          let date = '';
+          if (record.timestamp) {
+            try {
+              // Parse timestamp to extract date in YYYY-MM-DD format
+              const timestamp = record.timestamp;
+              
+              if (timestamp.includes('T')) {
+                // ISO format: "2025-09-04T18:11:08.738343"
+                date = timestamp.split('T')[0];
+              } else if (timestamp.includes(' ')) {
+                // Space format: "2025-09-04 18:11:08.738343"
+                date = timestamp.split(' ')[0];
+              } else {
+                // Try parsing as Date object
+                const parsedDate = new Date(timestamp);
+                if (!isNaN(parsedDate.getTime())) {
+                  date = parsedDate.toISOString().split('T')[0];
+                }
+              }
+              
+              console.log(`📅 DEBUG: Processing timestamp "${record.timestamp}" -> date: "${date}"`);
+            } catch (e) {
+              console.error(`❌ Failed to parse timestamp: ${record.timestamp}`, e);
+              date = '';
+            }
+          }
+          
           const key = `${record.employee_id}_${date}`;
           
           if (!groupedData[key]) {
@@ -149,6 +176,15 @@ export default function Attendance() {
           };
         });
 
+        console.log(`📋 DEBUG: Transformed to ${transformedData.length} attendance entries`);
+        console.log('📅 Date range in data:', {
+          allDates: [...new Set(transformedData.map(d => d.date))].sort(),
+          earliest: transformedData.length > 0 ? Math.min(...transformedData.map(d => d.date)) : 'none',
+          latest: transformedData.length > 0 ? Math.max(...transformedData.map(d => d.date)) : 'none'
+        });
+        console.log('🔍 Sample transformed data:', transformedData.slice(0, 5));
+        console.log('🔍 All unique dates in dataset:', [...new Set(transformedData.map(d => d.date))].sort());
+
         setAttendanceData(transformedData);
       } else {
         throw new Error(attendanceResult.error || 'Failed to fetch attendance data');
@@ -204,9 +240,10 @@ export default function Attendance() {
   useEffect(() => {
     fetchAttendanceData();
     
-    // Refresh every 30 seconds for real-time updates
-    const interval = setInterval(fetchAttendanceData, 30000);
-    return () => clearInterval(interval);
+    // Remove auto-refresh to prevent page from reloading while user is viewing data
+    // Users can manually refresh using the "Làm mới" button if needed
+    // const interval = setInterval(fetchAttendanceData, 30000);
+    // return () => clearInterval(interval);
   }, []);
 
   // Calculate statistics for today
@@ -218,31 +255,90 @@ export default function Attendance() {
   const absentToday = totalEmployees > 0 ? Math.max(0, totalEmployees - todayRecords.length) : 0;
 
   const exportToCSV = () => {
-    const headers = ['Tên nhân viên', 'Ngày', 'Giờ vào', 'Giờ ra', 'Thiết bị', 'Giờ làm việc'];
+    // Get filtered data that matches current display (same logic as table rendering)
+    const filteredData = attendanceData.filter(item => {
+      // Search filter
+      const matchesSearch = searchTerm === '' || 
+        item.employeeName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.employeeId.toLowerCase().includes(searchTerm.toLowerCase());
+      
+      // Employee filter
+      const matchesEmployee = selectedEmployee === '' || 
+        item.employeeId === selectedEmployee;
+      
+      // Date range filter
+      let matchesDateRange = true;
+      if (startDate || endDate) {
+        matchesDateRange = (!startDate || item.date >= startDate) && 
+          (!endDate || item.date <= endDate);
+      }
+      
+      return matchesSearch && matchesEmployee && matchesDateRange;
+    });
+
+    if (filteredData.length === 0) {
+      alert('Không có dữ liệu để xuất file CSV!');
+      return;
+    }
+
+    const headers = ['STT', 'Mã NV', 'Tên nhân viên', 'Ngày', 'Giờ vào', 'Giờ ra', 'Giờ làm việc', 'Thiết bị'];
     const csvContent = [
       headers.join(','),
-      ...attendanceData.map(row => [
-        row.employeeName,
+      ...filteredData.map((row, index) => [
+        index + 1, // STT
+        row.employeeId, // Mã NV
+        `"${row.employeeName}"`, // Wrap in quotes to handle commas in names
         row.date,
         row.checkIn,
         row.checkOut,
-        row.deviceId || 'N/A',
-        row.hoursWorked
+        row.hoursWorked,
+        row.deviceId || 'N/A'
       ].join(','))
     ].join('\n');
 
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    // Add BOM for UTF-8 encoding to display Vietnamese correctly in Excel
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
     const url = URL.createObjectURL(blob);
+    
+    // Create dynamic filename based on filters
+    let filename = 'attendance-report';
+    if (startDate && endDate) {
+      filename += `_${startDate}_to_${endDate}`;
+    } else if (startDate) {
+      filename += `_from_${startDate}`;
+    } else if (endDate) {
+      filename += `_to_${endDate}`;
+    } else {
+      filename += `_${getCurrentDateString()}`;
+    }
+    if (selectedEmployee) {
+      filename += `_${selectedEmployee}`;
+    }
+    filename += '.csv';
+    
     link.setAttribute('href', url);
-    link.setAttribute('download', 'attendance-report.csv');
+    link.setAttribute('download', filename);
     link.style.visibility = 'hidden';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+
+    // Show success message
+    alert(`Đã xuất ${filteredData.length} bản ghi ra file CSV: ${filename}`);
   };
 
   const handleSearch = () => {
+    // Validate date range
+    if (startDate && endDate && startDate > endDate) {
+      setError('Ngày bắt đầu không thể lớn hơn ngày kết thúc');
+      return;
+    }
+    
+    // Clear any previous errors
+    setError('');
+    
     // Apply filters by re-fetching data with current filter parameters
     // The actual filtering is done in the render method
     // This function serves as a trigger for search action
@@ -257,6 +353,16 @@ export default function Attendance() {
     if (searchTerm || selectedEmployee || startDate || endDate) {
       fetchAttendanceData();
     }
+  };
+
+  const handleClearFilters = () => {
+    setSearchTerm('');
+    setSelectedEmployee('');
+    // Set to today's date instead of empty
+    const today = getCurrentDateString();
+    setStartDate(today);
+    setEndDate(today);
+    setError('');
   };
 
   const getStatusColor = (status) => {
@@ -432,7 +538,7 @@ export default function Attendance() {
               </FormControl>
             </Grid>
             <Grid item xs={12} sm={6} md={3}>
-              <Box sx={{ display: 'flex', gap: 1 }}>
+              <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
                 <Button
                   variant="contained"
                   onClick={handleSearch}
@@ -443,7 +549,15 @@ export default function Attendance() {
                 </Button>
                 <Button
                   variant="outlined"
-                  onClick={() => setLoading(true)}
+                  onClick={handleClearFilters}
+                  disabled={loading}
+                  sx={{ minWidth: 'auto' }}
+                >
+                  Xóa bộ lọc
+                </Button>
+                <Button
+                  variant="outlined"
+                  onClick={fetchAttendanceData}
                   startIcon={<RefreshIcon />}
                   disabled={loading}
                 >
@@ -514,13 +628,32 @@ export default function Attendance() {
                       const matchesEmployee = selectedEmployee === '' || 
                         item.employeeId === selectedEmployee;
                       
-                      // Date range filter
-                      const matchesDateRange = (!startDate || item.date >= startDate) && 
-                        (!endDate || item.date <= endDate);
+                      // Date range filter - ENHANCED DEBUG
+                      let matchesDateRange = true;
+                      if (startDate || endDate) {
+                        // item.date format: "2025-09-05"
+                        // startDate/endDate format: "2025-09-01"
+                        
+                        console.log(`🔍 DETAILED DATE CHECK for ${item.employeeId} (${item.employeeName}):`, {
+                          itemDate: item.date,
+                          startDate: startDate,
+                          endDate: endDate,
+                          startComparison: startDate ? `${item.date} >= ${startDate} = ${item.date >= startDate}` : 'no startDate',
+                          endComparison: endDate ? `${item.date} <= ${endDate} = ${item.date <= endDate}` : 'no endDate'
+                        });
+                        
+                        // String comparison for YYYY-MM-DD format
+                        const startCheck = !startDate || item.date >= startDate;
+                        const endCheck = !endDate || item.date <= endDate;
+                        matchesDateRange = startCheck && endCheck;
+                        
+                        console.log(`   🎯 Final result: startCheck=${startCheck}, endCheck=${endCheck}, matchesDateRange=${matchesDateRange}`);
+                      }
                       
-                      return matchesSearch && matchesEmployee && matchesDateRange;
+                      const finalMatch = matchesSearch && matchesEmployee && matchesDateRange;
+                      
+                      return finalMatch;
                     })
-                    .slice(0, 15)
                     .map((row, index) => (
                     <TableRow key={row.id}>
                       <TableCell>{index + 1}</TableCell>

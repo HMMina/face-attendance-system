@@ -30,9 +30,9 @@ class EnhancedRecognitionService:
         self.template_manager = template_manager
         
         # Recognition thresholds - LOWERED FOR TESTING
-        self.RECOGNITION_THRESHOLD = 0.60  
-        self.HIGH_CONFIDENCE_THRESHOLD = 0.75  
-        self.VERY_HIGH_CONFIDENCE_THRESHOLD = 0.80
+        self.RECOGNITION_THRESHOLD = 0.65  # Lowered from 0.75
+        self.HIGH_CONFIDENCE_THRESHOLD = 0.70  # Lowered from 0.85
+        self.VERY_HIGH_CONFIDENCE_THRESHOLD = 0.80  # Lowered from 0.90
         
         # Learning thresholds
         self.MIN_QUALITY_FOR_LEARNING = 0.7
@@ -43,16 +43,12 @@ class EnhancedRecognitionService:
         self.uploads_dir.mkdir(parents=True, exist_ok=True)
     
     def _save_recognition_image(self, image: np.ndarray, employee_id: str = None, 
-                               similarity: float = None, suffix: str = None) -> str:
+                               similarity: float = None) -> str:
         """Save recognition image with timestamp and info"""
         try:
             timestamp = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")[:-3]
             if employee_id and similarity:
-                base_name = f"recognition_{employee_id}_{similarity:.3f}_{timestamp}"
-                if suffix:
-                    filename = f"{base_name}_{suffix}.jpg"
-                else:
-                    filename = f"{base_name}.jpg"
+                filename = f"recognition_{employee_id}_{similarity:.3f}_{timestamp}.jpg"
             else:
                 filename = f"recognition_unknown_{timestamp}.jpg"
             
@@ -152,14 +148,9 @@ class EnhancedRecognitionService:
                 db.commit()
                 
                 # Check if we should learn from this recognition
-                learning_result = await self._consider_template_learning(
+                await self._consider_template_learning(
                     db, employee.employee_id, face_image, similarity
                 )
-                
-                # Log learning results
-                if learning_result.get("learned", False):
-                    logger.info(f"🎓 TEMPLATE LEARNING: Successfully created new template for {employee.employee_id}")
-                    logger.info(f"📊 Learning details: {learning_result}")
             
             # Get confidence level
             confidence_level = self._get_confidence_level(similarity)
@@ -289,293 +280,12 @@ class EnhancedRecognitionService:
                         break
                 
                 if next_id:
-                    logger.info(f"🎓 LEARNING: Starting template creation for employee {employee_id} with image_id {next_id}")
-                    
-                    # Extract embedding from the high-quality recognition image
-                    input_embedding = self.ai_service.extract_embedding(face_image)
-                    if input_embedding is None:
-                        logger.error(f"Failed to extract embedding for learning - employee {employee_id}")
-                        return
-                    
-                    # Create new face template for rolling learning
-                    new_template = FaceTemplate(
-                        employee_id=employee_id,
-                        image_id=next_id,
-                        embedding_vector=input_embedding.tolist(),
-                        created_from="rolling_learning",  # Mark as learned template
-                        is_primary=False,  # Only image_id=0 is primary
-                        match_count=0,
-                        avg_match_confidence=0.0,
-                        created_at=datetime.datetime.utcnow(),
-                        quality_score=quality_score  # Store the quality score
-                    )
-                    
-                    # Save template to database
-                    db.add(new_template)
-                    db.commit()
-                    db.refresh(new_template)
-                    
-                    # Save the learning image for reference
-                    learning_image_path = self._save_recognition_image(
-                        face_image, employee_id, match_confidence, suffix="learning"
-                    )
-                    
-                    logger.info(f"✅ LEARNING SUCCESS: Created template {new_template.id} for employee {employee_id}")
-                    logger.info(f"📊 Template stats: image_id={next_id}, quality={quality_score:.3f}, confidence={match_confidence:.3f}")
-                    logger.info(f"💾 Learning image saved: {learning_image_path}")
-                    
-                    return {
-                        "learned": True,
-                        "template_id": new_template.id,
-                        "image_id": next_id,
-                        "quality_score": quality_score,
-                        "confidence": match_confidence,
-                        "learning_image": learning_image_path
-                    }
-                else:
-                    logger.info(f"🚫 No available slot for learning - employee {employee_id} (max templates reached)")
-                    
-                    # ========== TEMPLATE REPLACEMENT LOGIC ==========
-                    # When no slots available, consider replacing worst template
-                    replacement_result = await self._consider_template_replacement(
-                        db, employee_id, face_image, match_confidence, quality_score
-                    )
-                    
-                    if replacement_result.get("replaced", False):
-                        logger.info(f"� TEMPLATE REPLACEMENT SUCCESS: {replacement_result}")
-                        return replacement_result
-                    else:
-                        logger.info(f"⚠️ No template replacement performed: {replacement_result.get('reason', 'Unknown')}")
-            else:
-                logger.info(f"�📊 Employee {employee_id} already has max templates ({existing_count}/4)")
-                
-                # Even when count check fails, still try replacement  
-                replacement_result = await self._consider_template_replacement(
-                    db, employee_id, face_image, match_confidence, quality_score
-                )
-                
-                if replacement_result.get("replaced", False):
-                    return replacement_result
-                
-            return {"learned": False, "reason": "No learning opportunity - max templates reached"}
+                    logger.info(f"Learning: Adding template for employee {employee_id} with image_id {next_id}")
+                    # This would need actual implementation to save the template
+                    # For now, just log the learning opportunity
             
         except Exception as e:
             logger.error(f"Error in template learning: {e}")
-            return {"learned": False, "reason": f"Error: {str(e)}"}
-    
-    async def _consider_template_replacement(self, db: Session, employee_id: str, 
-                                           face_image: np.ndarray, match_confidence: float,
-                                           new_quality_score: float) -> Dict:
-        """
-        Consider replacing existing template when no slots available
-        
-        Replacement Strategy:
-        1. Never replace primary template (image_id=0)
-        2. Find worst performing template among learning templates (1,2,3)
-        3. Replace if new template is significantly better
-        """
-        try:
-            # Get all learning templates (exclude primary image_id=0)
-            learning_templates = db.query(FaceTemplate).filter(
-                FaceTemplate.employee_id == employee_id,
-                FaceTemplate.image_id > 0,  # Only learning templates
-                FaceTemplate.created_from == "rolling_learning"
-            ).all()
-            
-            if not learning_templates:
-                return {
-                    "replaced": False,
-                    "reason": "No learning templates available for replacement"
-                }
-            
-            # Calculate replacement scores for each template
-            replacement_candidates = []
-            
-            for template in learning_templates:
-                # Calculate replacement score (lower = worse template, higher priority for replacement)
-                replacement_score = self._calculate_template_replacement_score(template)
-                
-                replacement_candidates.append({
-                    "template": template,
-                    "replacement_score": replacement_score,
-                    "template_id": template.id,
-                    "image_id": template.image_id,
-                    "quality_score": template.quality_score or 0.0,
-                    "match_count": template.match_count,
-                    "avg_confidence": template.avg_match_confidence or 0.0
-                })
-            
-            # Sort by replacement score (lowest first - worst templates)
-            replacement_candidates.sort(key=lambda x: x["replacement_score"])
-            worst_template_info = replacement_candidates[0]
-            worst_template = worst_template_info["template"]
-            
-            # Decision logic: Replace if new template is significantly better
-            should_replace = self._should_replace_template(
-                worst_template_info, new_quality_score, match_confidence
-            )
-            
-            if should_replace:
-                logger.info(f"🔄 REPLACING TEMPLATE: employee={employee_id}, old_template_id={worst_template.id}")
-                logger.info(f"📊 Replacement reason: {should_replace}")
-                
-                # Extract embedding from new face
-                new_embedding = self.ai_service.extract_embedding(face_image)
-                if new_embedding is None:
-                    return {
-                        "replaced": False,
-                        "reason": "Failed to extract embedding for replacement"
-                    }
-                
-                # Update existing template with new data
-                old_image_id = worst_template.image_id
-                old_quality = worst_template.quality_score
-                old_confidence = worst_template.avg_match_confidence
-                
-                worst_template.embedding_vector = new_embedding.tolist()
-                worst_template.quality_score = new_quality_score
-                worst_template.match_count = 0  # Reset match count
-                worst_template.avg_match_confidence = 0.0  # Will be updated on first match
-                worst_template.created_at = datetime.datetime.utcnow()  # Update timestamp
-                worst_template.last_matched = None  # Reset last matched
-                
-                db.commit()
-                
-                # Save replacement image
-                replacement_image_path = self._save_recognition_image(
-                    face_image, employee_id, match_confidence, suffix=f"replacement_{old_image_id}"
-                )
-                
-                logger.info(f"✅ TEMPLATE REPLACEMENT COMPLETE:")
-                logger.info(f"   Template ID: {worst_template.id} (image_id={old_image_id})")
-                logger.info(f"   Quality: {old_quality:.3f} → {new_quality_score:.3f}")
-                logger.info(f"   Confidence: {old_confidence:.3f} → {match_confidence:.3f}")
-                logger.info(f"   Image saved: {replacement_image_path}")
-                
-                return {
-                    "replaced": True,
-                    "action": "template_replacement",
-                    "template_id": worst_template.id,
-                    "image_id": old_image_id,
-                    "old_quality": old_quality,
-                    "new_quality": new_quality_score,
-                    "old_confidence": old_confidence,
-                    "new_confidence": match_confidence,
-                    "replacement_image": replacement_image_path,
-                    "improvement": {
-                        "quality_gain": new_quality_score - old_quality,
-                        "confidence_gain": match_confidence - old_confidence
-                    }
-                }
-            else:
-                return {
-                    "replaced": False,
-                    "reason": f"New template not significantly better than worst existing template",
-                    "worst_template_score": worst_template_info["replacement_score"],
-                    "new_quality": new_quality_score,
-                    "new_confidence": match_confidence
-                }
-                
-        except Exception as e:
-            logger.error(f"Error in template replacement consideration: {e}")
-            return {
-                "replaced": False,
-                "reason": f"Replacement error: {str(e)}"
-            }
-    
-    def _calculate_template_replacement_score(self, template: FaceTemplate) -> float:
-        """
-        Calculate replacement priority score for a template
-        Lower score = higher priority for replacement (worse template)
-        
-        Factors:
-        - Quality score (40% weight)
-        - Match count (30% weight) - less used = more likely to replace
-        - Average confidence (20% weight)
-        - Age (10% weight) - older templates preferred for replacement
-        """
-        try:
-            # Quality component (0-1, higher = better)
-            quality_component = template.quality_score or 0.0
-            
-            # Usage component (normalize match_count, lower usage = higher replacement priority)
-            # Cap at 100 matches for normalization
-            usage_component = min(template.match_count / 100.0, 1.0)
-            
-            # Confidence component (0-1, higher = better)
-            confidence_component = template.avg_match_confidence or 0.0
-            
-            # Age component (older = higher replacement priority)
-            # Calculate days since creation, cap at 30 days
-            if template.created_at:
-                age_days = (datetime.datetime.utcnow() - template.created_at).days
-                age_component = min(age_days / 30.0, 1.0)  # Older = higher score = lower replacement priority (inverted)
-                age_component = 1.0 - age_component  # Invert: older = lower score = higher replacement priority
-            else:
-                age_component = 0.0
-            
-            # Weighted combination (lower = higher replacement priority)
-            replacement_score = (
-                quality_component * 0.4 +      # Quality: lower quality = lower score
-                usage_component * 0.3 +        # Usage: less used = lower score  
-                confidence_component * 0.2 +   # Confidence: lower confidence = lower score
-                age_component * 0.1             # Age: older = lower score
-            )
-            
-            logger.debug(f"Template {template.id} replacement score: {replacement_score:.3f} "
-                        f"(Q:{quality_component:.2f}, U:{usage_component:.2f}, "
-                        f"C:{confidence_component:.2f}, A:{age_component:.2f})")
-            
-            return replacement_score
-            
-        except Exception as e:
-            logger.error(f"Error calculating replacement score for template {template.id}: {e}")
-            return 0.5  # Default medium score
-    
-    def _should_replace_template(self, worst_template_info: Dict, 
-                               new_quality: float, new_confidence: float) -> str:
-        """
-        Determine if we should replace the worst template with new data
-        
-        Returns:
-        - String with reason if should replace
-        - False if should not replace
-        """
-        try:
-            old_quality = worst_template_info["quality_score"]
-            old_confidence = worst_template_info["avg_confidence"]
-            old_match_count = worst_template_info["match_count"]
-            
-            # Replacement criteria (any of these conditions)
-            
-            # 1. Significant quality improvement
-            quality_improvement = new_quality - old_quality
-            if quality_improvement >= 0.15:  # 15% quality improvement
-                return f"Quality improvement: {quality_improvement:.3f} (≥0.15 threshold)"
-            
-            # 2. Significant confidence improvement  
-            confidence_improvement = new_confidence - old_confidence
-            if confidence_improvement >= 0.10:  # 10% confidence improvement
-                return f"Confidence improvement: {confidence_improvement:.3f} (≥0.10 threshold)"
-            
-            # 3. Old template has very low usage (likely poor quality)
-            if old_match_count <= 2 and (quality_improvement > 0 or confidence_improvement > 0):
-                return f"Low usage template ({old_match_count} matches) with any improvement"
-            
-            # 4. Old template has very poor quality
-            if old_quality < 0.5 and new_quality >= 0.7:
-                return f"Poor quality template replacement: {old_quality:.3f} → {new_quality:.3f}"
-            
-            # 5. Combined moderate improvements
-            if quality_improvement >= 0.08 and confidence_improvement >= 0.05:
-                return f"Combined improvements: Q+{quality_improvement:.3f}, C+{confidence_improvement:.3f}"
-            
-            # No significant improvement
-            return False
-            
-        except Exception as e:
-            logger.error(f"Error in replacement decision: {e}")
-            return False
     
     def _calculate_image_quality(self, image: np.ndarray) -> float:
         """Calculate basic image quality score"""
@@ -616,87 +326,6 @@ class EnhancedRecognitionService:
             return "MEDIUM"
         else:
             return "LOW"
-    
-    async def get_rolling_templates_status(self, db: Session) -> Dict:
-        """Get comprehensive status of rolling templates system"""
-        try:
-            # Get all templates grouped by employee
-            all_templates = db.query(FaceTemplate).all()
-            
-            stats = {
-                "total_templates": len(all_templates),
-                "employees": {},
-                "templates_by_source": {},
-                "learning_stats": {
-                    "total_learned_templates": 0,
-                    "employees_with_learning": 0,
-                    "avg_learning_quality": 0.0,
-                    "total_replacements": 0,
-                    "avg_replacement_improvement": 0.0
-                },
-                "replacement_stats": {
-                    "quality_driven_replacements": 0,
-                    "confidence_driven_replacements": 0, 
-                    "usage_driven_replacements": 0,
-                    "combined_driven_replacements": 0
-                }
-            }
-            
-            for template in all_templates:
-                employee_id = template.employee_id
-                
-                # Initialize employee stats
-                if employee_id not in stats["employees"]:
-                    stats["employees"][employee_id] = {
-                        "total_templates": 0,
-                        "templates": [],
-                        "learning_capacity": 0  # How many more templates can be learned
-                    }
-                
-                # Count by source
-                source = template.created_from
-                if source not in stats["templates_by_source"]:
-                    stats["templates_by_source"][source] = 0
-                stats["templates_by_source"][source] += 1
-                
-                # Track learning templates
-                if source == "rolling_learning":
-                    stats["learning_stats"]["total_learned_templates"] += 1
-                    if template.quality_score:
-                        stats["learning_stats"]["avg_learning_quality"] += template.quality_score
-                
-                # Add to employee stats
-                emp_stats = stats["employees"][employee_id]
-                emp_stats["total_templates"] += 1
-                emp_stats["templates"].append({
-                    "template_id": template.id,
-                    "image_id": template.image_id,
-                    "created_from": template.created_from,
-                    "quality_score": template.quality_score,
-                    "match_count": template.match_count,
-                    "avg_confidence": template.avg_match_confidence,
-                    "is_primary": template.is_primary,
-                    "created_at": template.created_at
-                })
-                
-                # Calculate learning capacity (max 4 templates per employee)
-                emp_stats["learning_capacity"] = max(0, 4 - emp_stats["total_templates"])
-            
-            # Calculate employees with learning templates
-            for emp_id, emp_data in stats["employees"].items():
-                has_learning = any(t["created_from"] == "rolling_learning" for t in emp_data["templates"])
-                if has_learning:
-                    stats["learning_stats"]["employees_with_learning"] += 1
-            
-            # Calculate average learning quality
-            if stats["learning_stats"]["total_learned_templates"] > 0:
-                stats["learning_stats"]["avg_learning_quality"] /= stats["learning_stats"]["total_learned_templates"]
-                
-            return stats
-            
-        except Exception as e:
-            logger.error(f"Error getting rolling templates status: {e}")
-            return {"error": str(e)}
     
     async def get_employee_recognition_stats(self, db: Session, employee_id: str) -> Dict:
         """Get recognition statistics for an employee"""

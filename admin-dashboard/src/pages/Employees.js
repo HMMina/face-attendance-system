@@ -108,14 +108,19 @@ export default function Employees() {
   };
 
   const getEmployeePhotoUrl = (employee) => {
+    // Tạo cache busting mạnh hơn với nhiều tham số
+    const timestamp = Date.now();
+    const refreshKey = imageRefreshKey;
+    const randomKey = Math.random().toString(36).substring(7);
+    
     // First check if employee has photo_path from backend
     if (employee.photo_path) {
-      // Thêm timestamp và refresh key để tránh cache ảnh cũ
-      return `http://localhost:8000${employee.photo_path}?v=${imageRefreshKey}&t=${Date.now()}`;
+      // Thêm nhiều tham số cache busting để tránh cache ảnh cũ
+      return `http://localhost:8000${employee.photo_path}?v=${refreshKey}&t=${timestamp}&r=${randomKey}`;
     }
     
-    // Fallback: try backend API endpoint với timestamp và refresh key
-    return `http://localhost:8000/api/v1/employees/${employee.employee_id}/photo?v=${imageRefreshKey}&t=${Date.now()}`;
+    // Fallback: try backend API endpoint với cache busting mạnh
+    return `http://localhost:8000/api/v1/employees/${employee.employee_id}/photo?v=${refreshKey}&t=${timestamp}&r=${randomKey}`;
   };
 
   const fetchEmployees = async () => {
@@ -532,24 +537,36 @@ export default function Employees() {
           }
         }
       } else {
-        // Add new employee
+        // Add new employee - 2-step process for multiple photos
         if (selectedPhotos.length > 0) {
-          // Use addEmployeeWithPhoto API that handles both employee creation and photo upload
-          const formDataWithPhoto = new FormData();
-          formDataWithPhoto.append('name', finalFormData.name);
-          formDataWithPhoto.append('email', finalFormData.email || '');
-          formDataWithPhoto.append('employee_id', finalFormData.employee_id || '');
-          formDataWithPhoto.append('department', finalFormData.department || '');
-          formDataWithPhoto.append('position', finalFormData.position || '');
-          formDataWithPhoto.append('phone', finalFormData.phone || '');
+          console.log(`🚀 Adding new employee with ${selectedPhotos.length} photos, avatar index: ${selectedAvatarIndex}`);
           
-          // Upload the selected avatar photo
-          const avatarPhoto = selectedPhotos[selectedAvatarIndex];
-          formDataWithPhoto.append('photo', avatarPhoto.file);
+          // Step 1: Create employee without photo first
+          result = await addEmployee(finalFormData);
           
-          setPhotoUploading(true);
-          result = await addEmployeeWithPhoto(formDataWithPhoto);
-          setPhotoUploading(false);
+          if (result.success && result.data && result.data.employee_id) {
+            const newEmployeeId = result.data.employee_id;
+            console.log(`✅ Employee created with ID: ${newEmployeeId}, now uploading ${selectedPhotos.length} photos...`);
+            
+            try {
+              setPhotoUploading(true);
+              
+              // Step 2: Upload all photos using the same API as edit mode
+              const photoFiles = selectedPhotos.map(photo => photo.file);
+              await uploadMultiplePhotos(
+                newEmployeeId,
+                photoFiles,
+                selectedAvatarIndex
+              );
+              
+              console.log(`✅ Successfully uploaded ${selectedPhotos.length} photos for new employee ${newEmployeeId}`);
+            } catch (photoError) {
+              console.warn('Employee created but photo upload failed:', photoError);
+              setError('Nhân viên đã được tạo nhưng upload ảnh thất bại: ' + photoError.message);
+            } finally {
+              setPhotoUploading(false);
+            }
+          }
         } else {
           // Add without photo
           result = await addEmployee(finalFormData);
@@ -566,8 +583,21 @@ export default function Employees() {
         
         handleCloseDialog();
         
-        // Luôn refresh danh sách để cập nhật ảnh mới
-        await fetchEmployees();
+        // Đặc biệt xử lý cho trường hợp thêm mới với ảnh
+        if (!editingEmployee && selectedPhotos.length > 0) {
+          console.log('🔄 New employee with photo created, forcing complete refresh...');
+          // Delay nhỏ để đảm bảo backend đã lưu ảnh xong
+          setTimeout(async () => {
+            // Force refresh ảnh thêm một lần nữa
+            setImageRefreshKey(prev => prev + 2);
+            // Refresh danh sách nhân viên
+            await fetchEmployees();
+            console.log('✅ Delayed refresh completed for new employee with photo');
+          }, 500);
+        } else {
+          // Luôn refresh danh sách để cập nhật ảnh mới
+          await fetchEmployees();
+        }
       } else {
         throw new Error(result.error || 'Operation failed');
       }
@@ -839,9 +869,9 @@ export default function Employees() {
         </Paper>
 
         {/* Employees Table */}
-        <Paper sx={{ width: '100%', overflow: 'auto' }}>
-          <TableContainer sx={{ maxHeight: '75vh' }}> {/* Bỏ minWidth để table tự động fit */}
-            <Table stickyHeader size="small"> {/* Thêm size="small" để compact hơn */}
+        <Paper sx={{ width: '100%' }}>
+          <TableContainer>
+            <Table size="small"> {/* Thêm size="small" để compact hơn */}
               <TableHead>
                 <TableRow>
                   <TableCell sx={{ width: '120px', textAlign: 'center' }}>Ảnh</TableCell>

@@ -63,20 +63,20 @@ export default function Reports() {
         let startDate, endDate, totalWorkingDays;
         
         if (reportType === 'thisMonth') {
-          // This month: from 1st to last day of current month
+          // This month: from 1st to current date (not future dates)
           startDate = new Date(now.getFullYear(), now.getMonth(), 1);
-          endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-          // Calculate working days (excluding weekends)
+          endDate = new Date(now); // Current date, not end of month
+          // Calculate working days (excluding weekends) up to current date
           totalWorkingDays = getWorkingDaysInRange(startDate, endDate);
         } else {
-          // This week: from Monday to Friday of current week
+          // This week: from Monday to current date (not future dates in the week)
           const dayOfWeek = now.getDay();
           const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek; // Handle Sunday
           startDate = new Date(now);
           startDate.setDate(now.getDate() + mondayOffset);
-          endDate = new Date(startDate);
-          endDate.setDate(startDate.getDate() + 4); // Friday
-          totalWorkingDays = 5; // Monday to Friday
+          endDate = new Date(now); // Current date, not end of week
+          // Calculate actual working days up to current date
+          totalWorkingDays = getWorkingDaysInRange(startDate, endDate);
         }
         
         // Filter attendance records within date range
@@ -192,7 +192,49 @@ export default function Reports() {
   }, [reportType]); // Re-fetch when report type changes
 
   const handleExportReport = (format) => {
-    alert(`Đang xuất báo cáo định dạng ${format}...`);
+    if (!reportData || reportData.length === 0) {
+      alert('Không có dữ liệu để xuất báo cáo!');
+      return;
+    }
+
+    const reportTitle = reportType === 'thisMonth' ? 'Tháng này' : 'Tuần này';
+    
+    if (format === 'Excel') {
+      exportToExcel(reportData, reportTitle);
+    }
+  };
+
+  const exportToExcel = (data, title) => {
+    // Create CSV content for Excel
+    const headers = ['STT', 'Mã NV', 'Tên nhân viên', 'Phòng ban', 'Tổng ngày làm', 'Ngày có mặt', 'Ngày muộn', 'Ngày vắng', 'Tỷ lệ chấm công (%)'];
+    const csvContent = [
+      headers.join(','),
+      ...data.map((row, index) => [
+        index + 1,
+        row.employeeId,
+        `"${row.name}"`, // Wrap in quotes for Vietnamese names
+        `"${row.department || 'N/A'}"`,
+        row.totalWorkingDays,
+        row.presentDays,
+        row.lateDays,
+        row.absentDays,
+        row.attendanceRate.toFixed(1)
+      ].join(','))
+    ].join('\n');
+
+    // Add BOM for UTF-8 encoding
+    const BOM = '\uFEFF';
+    const blob = new Blob([BOM + csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    const url = URL.createObjectURL(blob);
+    link.setAttribute('href', url);
+    link.setAttribute('download', `bao-cao-cham-cong-${title.toLowerCase().replace(' ', '-')}-${new Date().toISOString().split('T')[0]}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+
+    // Removed success alert message
   };
 
   const handleReportTypeChange = (newType) => {
@@ -299,15 +341,7 @@ export default function Reports() {
                   onClick={() => handleExportReport('Excel')}
                   size="small"
                 >
-                  Excel
-                </Button>
-                <Button
-                  variant="outlined"
-                  startIcon={<DownloadIcon />}
-                  onClick={() => handleExportReport('PDF')}
-                  size="small"
-                >
-                  PDF
+                  Xuất Excel
                 </Button>
               </Box>
             </Grid>

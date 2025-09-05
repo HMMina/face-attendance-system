@@ -46,7 +46,7 @@ class FaceTemplate(Base):
     __table_args__ = (
         UniqueConstraint('employee_id', 'image_id', name='unique_employee_image_id'),
         CheckConstraint('image_id >= 0 AND image_id <= 3', name='image_id_check'),
-        CheckConstraint('created_from IN (\'ADMIN_UPLOAD\', \'ATTENDANCE\', \'registration\', \'rolling_learning\')', name='created_from_check'),
+        CheckConstraint('created_from IN (\'ADMIN_UPLOAD\', \'ATTENDANCE\')', name='created_from_check'),
         CheckConstraint('quality_score >= 0.0 AND quality_score <= 1.0', name='quality_score_check'),
         CheckConstraint('confidence_score >= 0.0 AND confidence_score <= 1.0', name='confidence_score_check'),
     )

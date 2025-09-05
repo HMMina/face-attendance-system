@@ -26,11 +26,10 @@ class AIConfig:
     """Configuration class for AI service optimization"""
     
     # Detection settings
-    DETECTION_CONFIDENCE_THRESHOLD = 0.5
+    DETECTION_CONFIDENCE_THRESHOLD = 0.7
     MAX_IMAGE_SIZE = 1280
     
-    # Recognition settings  
-    RECOGNITION_THRESHOLD = 0.6  # Lowered for testing
+    # Face processing settings
     EMBEDDING_CACHE_SIZE = 1000
     FACE_CROP_PADDING = 20
     
@@ -38,7 +37,6 @@ class AIConfig:
     USE_FULL_IMAGE_FOR_SPOOF = True
     
     # Cosine Similarity settings
-    COSINE_SIMILARITY_THRESHOLD = 0.6  # Lowered for testing
     NORMALIZE_EMBEDDINGS_BEFORE_COMPARISON = True
     USE_OPTIMIZED_COSINE_SIMILARITY = True
     
@@ -689,7 +687,6 @@ class RealAIService:
                 return None, 0.0
             
             # TEMPORARILY DISABLE THRESHOLD - Always return best match for debugging
-            # threshold = AIConfig.COSINE_SIMILARITY_THRESHOLD
             threshold = 0.0  # Accept any match above 0
             
             self.logger.info(f"🔍 DEBUG: Matching against {len(employee_embeddings)} employees (threshold disabled)")
