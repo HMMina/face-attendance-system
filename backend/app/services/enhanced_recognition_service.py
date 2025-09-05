@@ -30,25 +30,29 @@ class EnhancedRecognitionService:
         self.template_manager = template_manager
         
         # Recognition thresholds - LOWERED FOR TESTING
-        self.RECOGNITION_THRESHOLD = 0.70  # Lowered from 0.75
-        self.HIGH_CONFIDENCE_THRESHOLD = 0.80  # Lowered from 0.85
-        self.VERY_HIGH_CONFIDENCE_THRESHOLD = 0.85  # Lowered from 0.90
+        self.RECOGNITION_THRESHOLD = 0.60  
+        self.HIGH_CONFIDENCE_THRESHOLD = 0.75  
+        self.VERY_HIGH_CONFIDENCE_THRESHOLD = 0.80
         
         # Learning thresholds
         self.MIN_QUALITY_FOR_LEARNING = 0.7
-        self.MIN_CONFIDENCE_FOR_LEARNING = 0.8
+        self.MIN_CONFIDENCE_FOR_LEARNING = 0.7
         
         # Uploads directory
         self.uploads_dir = Path("data/uploads")
         self.uploads_dir.mkdir(parents=True, exist_ok=True)
     
     def _save_recognition_image(self, image: np.ndarray, employee_id: str = None, 
-                               similarity: float = None) -> str:
+                               similarity: float = None, suffix: str = None) -> str:
         """Save recognition image with timestamp and info"""
         try:
             timestamp = datetime.datetime.utcnow().strftime("%Y%m%d_%H%M%S_%f")[:-3]
             if employee_id and similarity:
-                filename = f"recognition_{employee_id}_{similarity:.3f}_{timestamp}.jpg"
+                base_name = f"recognition_{employee_id}_{similarity:.3f}_{timestamp}"
+                if suffix:
+                    filename = f"{base_name}_{suffix}.jpg"
+                else:
+                    filename = f"{base_name}.jpg"
             else:
                 filename = f"recognition_unknown_{timestamp}.jpg"
             
@@ -148,9 +152,14 @@ class EnhancedRecognitionService:
                 db.commit()
                 
                 # Check if we should learn from this recognition
-                await self._consider_template_learning(
+                learning_result = await self._consider_template_learning(
                     db, employee.employee_id, face_image, similarity
                 )
+                
+                # Log learning results
+                if learning_result.get("learned", False):
+                    logger.info(f"🎓 TEMPLATE LEARNING: Successfully created new template for {employee.employee_id}")
+                    logger.info(f"📊 Learning details: {learning_result}")
             
             # Get confidence level
             confidence_level = self._get_confidence_level(similarity)
@@ -280,12 +289,59 @@ class EnhancedRecognitionService:
                         break
                 
                 if next_id:
-                    logger.info(f"Learning: Adding template for employee {employee_id} with image_id {next_id}")
-                    # This would need actual implementation to save the template
-                    # For now, just log the learning opportunity
+                    logger.info(f"🎓 LEARNING: Starting template creation for employee {employee_id} with image_id {next_id}")
+                    
+                    # Extract embedding from the high-quality recognition image
+                    input_embedding = self.ai_service.extract_embedding(face_image)
+                    if input_embedding is None:
+                        logger.error(f"Failed to extract embedding for learning - employee {employee_id}")
+                        return
+                    
+                    # Create new face template for rolling learning
+                    new_template = FaceTemplate(
+                        employee_id=employee_id,
+                        image_id=next_id,
+                        embedding_vector=input_embedding.tolist(),
+                        created_from="rolling_learning",  # Mark as learned template
+                        is_primary=False,  # Only image_id=0 is primary
+                        match_count=0,
+                        avg_match_confidence=0.0,
+                        created_at=datetime.datetime.utcnow(),
+                        quality_score=quality_score  # Store the quality score
+                    )
+                    
+                    # Save template to database
+                    db.add(new_template)
+                    db.commit()
+                    db.refresh(new_template)
+                    
+                    # Save the learning image for reference
+                    learning_image_path = self._save_recognition_image(
+                        face_image, employee_id, match_confidence, suffix="learning"
+                    )
+                    
+                    logger.info(f"✅ LEARNING SUCCESS: Created template {new_template.id} for employee {employee_id}")
+                    logger.info(f"📊 Template stats: image_id={next_id}, quality={quality_score:.3f}, confidence={match_confidence:.3f}")
+                    logger.info(f"💾 Learning image saved: {learning_image_path}")
+                    
+                    return {
+                        "learned": True,
+                        "template_id": new_template.id,
+                        "image_id": next_id,
+                        "quality_score": quality_score,
+                        "confidence": match_confidence,
+                        "learning_image": learning_image_path
+                    }
+                else:
+                    logger.info(f"🚫 No available slot for learning - employee {employee_id} (max templates reached)")
+            else:
+                logger.info(f"📊 Employee {employee_id} already has max templates ({existing_count}/4)")
+                
+            return {"learned": False, "reason": "No learning opportunity"}
             
         except Exception as e:
             logger.error(f"Error in template learning: {e}")
+            return {"learned": False, "reason": f"Error: {str(e)}"}
     
     def _calculate_image_quality(self, image: np.ndarray) -> float:
         """Calculate basic image quality score"""
@@ -326,6 +382,79 @@ class EnhancedRecognitionService:
             return "MEDIUM"
         else:
             return "LOW"
+    
+    async def get_rolling_templates_status(self, db: Session) -> Dict:
+        """Get comprehensive status of rolling templates system"""
+        try:
+            # Get all templates grouped by employee
+            all_templates = db.query(FaceTemplate).all()
+            
+            stats = {
+                "total_templates": len(all_templates),
+                "employees": {},
+                "templates_by_source": {},
+                "learning_stats": {
+                    "total_learned_templates": 0,
+                    "employees_with_learning": 0,
+                    "avg_learning_quality": 0.0
+                }
+            }
+            
+            for template in all_templates:
+                employee_id = template.employee_id
+                
+                # Initialize employee stats
+                if employee_id not in stats["employees"]:
+                    stats["employees"][employee_id] = {
+                        "total_templates": 0,
+                        "templates": [],
+                        "learning_capacity": 0  # How many more templates can be learned
+                    }
+                
+                # Count by source
+                source = template.created_from
+                if source not in stats["templates_by_source"]:
+                    stats["templates_by_source"][source] = 0
+                stats["templates_by_source"][source] += 1
+                
+                # Track learning templates
+                if source == "rolling_learning":
+                    stats["learning_stats"]["total_learned_templates"] += 1
+                    if template.quality_score:
+                        stats["learning_stats"]["avg_learning_quality"] += template.quality_score
+                
+                # Add to employee stats
+                emp_stats = stats["employees"][employee_id]
+                emp_stats["total_templates"] += 1
+                emp_stats["templates"].append({
+                    "template_id": template.id,
+                    "image_id": template.image_id,
+                    "created_from": template.created_from,
+                    "quality_score": template.quality_score,
+                    "match_count": template.match_count,
+                    "avg_confidence": template.avg_match_confidence,
+                    "is_primary": template.is_primary,
+                    "created_at": template.created_at
+                })
+                
+                # Calculate learning capacity (max 4 templates per employee)
+                emp_stats["learning_capacity"] = max(0, 4 - emp_stats["total_templates"])
+            
+            # Calculate employees with learning templates
+            for emp_id, emp_data in stats["employees"].items():
+                has_learning = any(t["created_from"] == "rolling_learning" for t in emp_data["templates"])
+                if has_learning:
+                    stats["learning_stats"]["employees_with_learning"] += 1
+            
+            # Calculate average learning quality
+            if stats["learning_stats"]["total_learned_templates"] > 0:
+                stats["learning_stats"]["avg_learning_quality"] /= stats["learning_stats"]["total_learned_templates"]
+                
+            return stats
+            
+        except Exception as e:
+            logger.error(f"Error getting rolling templates status: {e}")
+            return {"error": str(e)}
     
     async def get_employee_recognition_stats(self, db: Session, employee_id: str) -> Dict:
         """Get recognition statistics for an employee"""
