@@ -21,10 +21,3 @@ uvicorn app.main:app --reload
 - Sử dụng mDNS/Bonjour để thiết bị kiosk tự động tìm server
 - Không hardcode IP, dùng service name `_attendance._tcp.local.`
 
-## Bảo mật
-- Thiết bị đăng ký nhận token, xác thực qua token
-- Token scope hạn chế cho thiết bị kiosk
-
-## Lưu ý
-- AI nhận diện mock cho MVP, có thể tích hợp YOLO/InsightFace sau
-- Cấu hình database trong `.env.local.example` hoặc `settings.py`
