@@ -341,7 +341,7 @@ export default function Reports() {
                   onClick={() => handleExportReport('Excel')}
                   size="small"
                 >
-                  Xuất Excel
+                  Xuất CSV
                 </Button>
               </Box>
             </Grid>
