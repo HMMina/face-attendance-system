@@ -13,17 +13,23 @@ venv.bak/
 *.egg-info/
 dist/
 build/
+*.pyc
 
 # Database files  
 *.db
 *.sqlite3
-data/
 *.log
+
+# Data directories (contains uploaded images, models, backups)
+data/
+/backend/data/
+/admin-dashboard/public/employee_photos/
 
 # Environment files
 .env
 .env.local
 .env.*.local
+*.env
 
 # VS Code
 .vscode/
@@ -37,17 +43,64 @@ Thumbs.db
 node_modules/
 package-lock.json
 npm-debug.log*
+yarn.lock
+
+# Flutter/Dart
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Android
+*.jks
+*.keystore
+/android/app/debug
+/android/app/profile
+/android/app/release
+
+# iOS
+*.mobileprovision
+*.p8
+*.p12
+*.key
+*.pem
+/ios/build/
 
 # Temporary files
 *.tmp
 *.temp
 *.bak
+*~
 
-# PostgreSQL data directory (should not be in version control)
-data/
-pg_log/
-postgresql.conf
-pg_hba.conf
+# AI Models (too large for git)
+*.onnx
+*.pt
+*.pth
+*.pkl
+*.h5
+*.pb
+
+# Uploads and user data
+uploads/
+employee_photos/
+face_photos/
+models/
+backups/
+
+# Log files
+*.log
+logs/
+
+# IDE files
+.idea/
+*.swp
+*.swo
+
+# Docker volumes
+docker-compose.override.yml
 recovery.conf
 
 # Temporary documentation and test files (auto-generated)
