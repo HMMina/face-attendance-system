@@ -220,7 +220,7 @@ Distributed under the MIT License. See `LICENSE` for more information.
 
 ## 📞 Support
 
-For support, email: support@yourcompany.com or create an issue on GitHub.
+For support, email: minhah4504@gmail.com or create an issue on GitHub.
 
 ---
 
