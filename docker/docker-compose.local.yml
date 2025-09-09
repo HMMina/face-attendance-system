@@ -10,7 +10,7 @@ services:
       - ../backend/app:/app/app
       - ../data/uploads:/app/data/uploads
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/attendance
+      - DATABASE_URL=
     depends_on:
       - db
   admin:
