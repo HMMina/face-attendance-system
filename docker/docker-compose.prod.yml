@@ -5,7 +5,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/attendance
+      - DATABASE_URL=
     depends_on:
       - db
   admin:
