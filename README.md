@@ -88,7 +88,7 @@ InsightFace Buffalo_L: ~1.7GB
 
 ### 1. Clone Repository
 ```bash
-git clone https://github.com/yourusername/face-attendance-system.git
+git clone https://github.com/HMMina/face-attendance-system.git
 cd face-attendance-system
 ```
 
