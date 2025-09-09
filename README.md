@@ -79,9 +79,9 @@ CUDA (optional, for GPU acceleration)
 
 ### AI Models:
 ```bash
-YOLOv11s (detection): ~22MB
-YOLOv11s-cls (anti-spoofing): ~5MB  
-InsightFace Buffalo_L: ~1.7GB
+YOLOv11s (detection): ~18MB
+YOLOv11s-cls (anti-spoofing): ~10MB  
+InsightFace Buffalo_L: ~330MB
 ```
 
 ## 🚀 Cài đặt và chạy
